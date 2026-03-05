@@ -1,30 +1,9 @@
-import { CheckCircle, Clock, Truck } from "lucide-react";
+import { CheckCircle, Clock, XCircle, Ban } from "lucide-react";
 import { useTranslation } from "./translation-context";
 import { useCurrency } from "./currency-context";
 import { motion } from "motion/react";
-
-interface HistoryOrder {
-  id: string;
-  table: string;
-  customer: string;
-  items: number;
-  total: number;
-  time: string;
-  date: string;
-  status: "completed" | "cancelled";
-  platform?: "grab" | "foodpanda" | null;
-}
-
-const historyOrders: HistoryOrder[] = [
-  { id: "#4820", table: "T5", customer: "Alex B.", items: 4, total: 18.50, time: "11:30", date: "03/03/2026", status: "completed" },
-  { id: "#4819", table: "GR", customer: "Grab #2841", items: 2, total: 9.00, time: "11:15", date: "03/03/2026", status: "completed", platform: "grab" },
-  { id: "#4818", table: "T8", customer: "James L.", items: 6, total: 25.00, time: "10:45", date: "03/03/2026", status: "completed" },
-  { id: "#4817", table: "FP", customer: "FoodPanda #389", items: 1, total: 5.50, time: "10:30", date: "03/03/2026", status: "cancelled", platform: "foodpanda" },
-  { id: "#4816", table: "T10", customer: "David K.", items: 5, total: 22.00, time: "10:00", date: "03/03/2026", status: "completed" },
-  { id: "#4815", table: "T4", customer: "Emma W.", items: 3, total: 12.50, time: "09:45", date: "03/03/2026", status: "completed" },
-  { id: "#4814", table: "T7", customer: "Noah P.", items: 2, total: 8.00, time: "09:30", date: "03/03/2026", status: "completed" },
-  { id: "#4813", table: "T6", customer: "Olivia R.", items: 4, total: 19.00, time: "09:00", date: "03/03/2026", status: "completed" },
-];
+import { useState, useEffect } from "react";
+import { getLocalOrders } from "../../lib/local-orders";
 
 const platformColors: Record<string, string> = {
   grab: "#00B14F",
@@ -32,8 +11,19 @@ const platformColors: Record<string, string> = {
 };
 
 export function HistoryView() {
-  const { t, fontClass } = useTranslation();
+  const { t, lang, fontClass } = useTranslation();
   const { formatPrice, formatDual } = useCurrency();
+  const [orders, setOrders] = useState<any[]>([]);
+
+  useEffect(() => {
+    const load = () => {
+      const all = getLocalOrders(200);
+      setOrders(all);
+    };
+    load();
+    const iv = setInterval(load, 5000);
+    return () => clearInterval(iv);
+  }, []);
 
   return (
     <div className={`p-6 ${fontClass}`}>
@@ -41,55 +31,78 @@ export function HistoryView() {
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-50 dark:border-gray-700 overflow-hidden">
         <div className="grid grid-cols-7 gap-4 px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-700">
-          {["Order", t("date"), "Table", "Customer", t("items"), t("total"), "Status"].map((h) => (
+          {["Order", t("date"), lang === "km" ? "វិធីបង់" : "Method", lang === "km" ? "មុខម្ហូប" : "Items", t("items"), t("total"), "Status"].map((h) => (
             <span key={h} className="text-gray-400" style={{ fontSize: "11px", fontWeight: 600 }}>{h}</span>
           ))}
         </div>
-        {historyOrders.map((order, i) => {
-          const dual = formatDual(order.total);
-          return (
-            <motion.div
-              key={order.id}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.05 }}
-              className="grid grid-cols-7 gap-4 px-4 py-3 border-b border-gray-50 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer items-center"
-            >
-              <span className="text-gray-800 dark:text-gray-200" style={{ fontSize: "13px", fontWeight: 600 }}>{order.id}</span>
-              <div>
-                <span className="text-gray-600 dark:text-gray-400 block" style={{ fontSize: "12px" }}>{order.date}</span>
-                <span className="text-gray-400" style={{ fontSize: "10px" }}>{order.time}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="text-gray-600 dark:text-gray-400" style={{ fontSize: "13px" }}>{order.table}</span>
-                {order.platform && (
-                  <span className="text-white px-1 py-0.5 rounded" style={{ backgroundColor: platformColors[order.platform], fontSize: "8px", fontWeight: 700 }}>
-                    {order.platform === "grab" ? "GR" : "FP"}
+
+        {orders.length === 0 ? (
+          <div className="text-center py-16 text-gray-400">
+            <div className="w-16 h-16 bg-gray-50 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-3">
+              <Clock size={24} />
+            </div>
+            <p style={{ fontSize: "14px", fontWeight: 500 }}>{lang === "km" ? "មិនទាន់មានប្រវត្តិបញ្ជាទេ" : "No order history yet"}</p>
+            <p style={{ fontSize: "12px" }} className="mt-1">{lang === "km" ? "បញ្ជាថ្មីនឹងបង្ហាញនៅទីនេះ" : "New orders will appear here"}</p>
+          </div>
+        ) : (
+          orders.map((order, i) => {
+            const dual = formatDual(order.total);
+            const isCancelled = order.status === "cancelled";
+            const itemNames = order.items?.map((it: any) => it.name).join(", ") || "-";
+            const itemCount = order.items?.reduce((s: number, it: any) => s + (it.qty || 1), 0) || 0;
+            const created = new Date(order.created_at);
+
+            return (
+              <motion.div
+                key={order.id || i}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.03 }}
+                className={`grid grid-cols-7 gap-4 px-4 py-3 border-b border-gray-50 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer items-center ${isCancelled ? "opacity-60" : ""}`}
+              >
+                <span className="text-gray-800 dark:text-gray-200" style={{ fontSize: "13px", fontWeight: 600 }}>
+                  #{order.order_number}
+                </span>
+                <div>
+                  <span className="text-gray-600 dark:text-gray-400 block" style={{ fontSize: "12px" }}>
+                    {created.toLocaleDateString()}
                   </span>
-                )}
-              </div>
-              <span className="text-gray-700 dark:text-gray-300 truncate" style={{ fontSize: "13px", fontWeight: 500 }}>{order.customer}</span>
-              <span className="text-gray-500" style={{ fontSize: "13px" }}>{order.items} {t("items")}</span>
-              <div>
-                <span className="text-gray-900 dark:text-white block" style={{ fontSize: "13px", fontWeight: 600 }}>{formatPrice(order.total)}</span>
-                <span className="text-gray-400" style={{ fontSize: "9px" }}>{dual.khr}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                {order.status === "completed" ? (
-                  <span className="flex items-center gap-1 text-[#22C55E]" style={{ fontSize: "12px", fontWeight: 500 }}>
-                    <CheckCircle size={14} />
-                    {t("completed")}
+                  <span className="text-gray-400" style={{ fontSize: "10px" }}>
+                    {created.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </span>
-                ) : (
-                  <span className="flex items-center gap-1 text-red-400" style={{ fontSize: "12px", fontWeight: 500 }}>
-                    <Clock size={14} />
-                    {t("cancel")}
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="text-gray-600 dark:text-gray-400 capitalize" style={{ fontSize: "13px" }}>
+                    {order.payment_method || "cash"}
                   </span>
-                )}
-              </div>
-            </motion.div>
-          );
-        })}
+                </div>
+                <span className="text-gray-700 dark:text-gray-300 truncate" style={{ fontSize: "12px", fontWeight: 500 }}>
+                  {itemNames}
+                </span>
+                <span className="text-gray-500" style={{ fontSize: "13px" }}>{itemCount} {t("items")}</span>
+                <div>
+                  <span className={`block ${isCancelled ? "line-through text-red-400" : "text-gray-900 dark:text-white"}`} style={{ fontSize: "13px", fontWeight: 600 }}>
+                    {formatPrice(order.total)}
+                  </span>
+                  <span className="text-gray-400" style={{ fontSize: "9px" }}>{dual.khr}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  {isCancelled ? (
+                    <span className="flex items-center gap-1 text-red-400" style={{ fontSize: "12px", fontWeight: 500 }}>
+                      <XCircle size={14} />
+                      {lang === "km" ? "បោះបង់" : "Cancelled"}
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-[#22C55E]" style={{ fontSize: "12px", fontWeight: 500 }}>
+                      <CheckCircle size={14} />
+                      {t("completed")}
+                    </span>
+                  )}
+                </div>
+              </motion.div>
+            );
+          })
+        )}
       </div>
     </div>
   );

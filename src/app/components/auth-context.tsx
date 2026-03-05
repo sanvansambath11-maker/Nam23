@@ -64,8 +64,8 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   isAuthenticated: false,
   isAdmin: false,
-  login: () => {},
-  logout: () => {},
+  login: () => { },
+  logout: () => { },
   hasPermission: () => false,
 });
 
@@ -73,15 +73,44 @@ export function useAuth() {
   return useContext(AuthContext);
 }
 
+const AUTH_SESSION_KEY = "battoclub_staff_session";
+
+function getSavedUser(): AuthUser | null {
+  try {
+    const saved = localStorage.getItem(AUTH_SESSION_KEY);
+    if (!saved) return null;
+    const parsed = JSON.parse(saved);
+    // Validate that the saved data has required fields
+    if (parsed && parsed.name && parsed.role) return parsed as AuthUser;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function saveUser(user: AuthUser | null) {
+  try {
+    if (user) {
+      // Don't persist the PIN in localStorage for security
+      const { pin: _pin, ...safeUser } = user;
+      localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify({ ...safeUser, pin: "" }));
+    } else {
+      localStorage.removeItem(AUTH_SESSION_KEY);
+    }
+  } catch { /* ignore storage errors */ }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(() => getSavedUser());
 
   const login = useCallback((u: AuthUser) => {
     setUser(u);
+    saveUser(u);
   }, []);
 
   const logout = useCallback(() => {
     setUser(null);
+    saveUser(null);
   }, []);
 
   const hasPermission = useCallback(

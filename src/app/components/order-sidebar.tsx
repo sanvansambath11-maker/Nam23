@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Minus, Plus, Trash2, X, Split, FileText, UtensilsCrossed, ShoppingBag, Truck } from "lucide-react";
+import { Minus, Plus, Trash2, X, Split, FileText, UtensilsCrossed, ShoppingBag, Truck, Ban } from "lucide-react";
 import { useTranslation } from "./translation-context";
 import { useCurrency } from "./currency-context";
 
@@ -20,9 +20,10 @@ interface OrderSidebarProps {
   onPay: () => void;
   onSplitBill: () => void;
   onReceipt: () => void;
+  onCancelOrder?: () => void;
 }
 
-export function OrderSidebar({ items, onUpdateQuantity, onRemoveItem, onPay, onSplitBill, onReceipt }: OrderSidebarProps) {
+export function OrderSidebar({ items, onUpdateQuantity, onRemoveItem, onPay, onSplitBill, onReceipt, onCancelOrder }: OrderSidebarProps) {
   const { t, fontClass } = useTranslation();
   const { formatPrice, formatDual } = useCurrency();
   const [orderType, setOrderType] = useState<OrderType>("dineIn");
@@ -40,7 +41,7 @@ export function OrderSidebar({ items, onUpdateQuantity, onRemoveItem, onPay, onS
   ];
 
   return (
-    <div className={`w-full lg:w-[340px] xl:w-[360px] bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-50 dark:border-gray-800 flex flex-col h-full ${fontClass}`}>
+    <div className={`w-full lg:w-[340px] xl:w-[360px] glass-sidebar rounded-2xl shadow-sm flex flex-col h-full ${fontClass}`}>
       <div className="p-4 border-b border-gray-100 dark:border-gray-800">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-gray-900 dark:text-white" style={{ fontSize: "16px", fontWeight: 700 }}>{t("orderDetails")}</h3>
@@ -53,11 +54,10 @@ export function OrderSidebar({ items, onUpdateQuantity, onRemoveItem, onPay, onS
             <button
               key={ot.key}
               onClick={() => setOrderType(ot.key)}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg transition-all ${
-                orderType === ot.key
-                  ? "bg-white dark:bg-gray-700 shadow-sm"
-                  : "text-gray-400 hover:text-gray-600"
-              }`}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg transition-all ${orderType === ot.key
+                ? "bg-white dark:bg-gray-700 shadow-sm"
+                : "text-gray-400 hover:text-gray-600"
+                }`}
               style={{ fontSize: "11px", fontWeight: orderType === ot.key ? 600 : 500 }}
             >
               <span style={{ color: orderType === ot.key ? ot.color : undefined }}>{ot.icon}</span>
@@ -79,7 +79,7 @@ export function OrderSidebar({ items, onUpdateQuantity, onRemoveItem, onPay, onS
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 premium-scrollbar">
         {items.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-gray-300 dark:text-gray-600">
             <div className="w-16 h-16 bg-gray-50 dark:bg-gray-800 rounded-full flex items-center justify-center mb-3">
@@ -92,7 +92,7 @@ export function OrderSidebar({ items, onUpdateQuantity, onRemoveItem, onPay, onS
           items.map((item) => (
             <div key={item.id} className="flex items-start gap-3 p-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
               <div
-                className="w-8 h-8 bg-[#22C55E]/10 rounded-lg flex items-center justify-center text-[#22C55E] shrink-0"
+                className="w-8 h-8 gradient-primary-soft rounded-lg flex items-center justify-center shrink-0"
                 style={{ fontSize: "12px", fontWeight: 700 }}
               >
                 {item.quantity}X
@@ -177,11 +177,23 @@ export function OrderSidebar({ items, onUpdateQuantity, onRemoveItem, onPay, onS
         <button
           onClick={onPay}
           disabled={items.length === 0}
-          className="w-full py-3.5 bg-[#22C55E] text-white rounded-2xl hover:bg-green-600 transition-colors shadow-lg shadow-green-200 dark:shadow-green-900 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full py-3.5 gradient-primary text-white rounded-2xl hover:opacity-90 transition-all shadow-lg shadow-green-200 dark:shadow-green-900 press-effect gradient-glow disabled:opacity-50 disabled:cursor-not-allowed"
           style={{ fontSize: "15px", fontWeight: 700 }}
         >
           {t("pay")} {formatPrice(total)}
         </button>
+
+        {/* Cancel Order */}
+        {items.length > 0 && onCancelOrder && (
+          <button
+            onClick={onCancelOrder}
+            className="w-full mt-2 py-2.5 border-2 border-red-200 dark:border-red-800 text-red-500 rounded-2xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-all flex items-center justify-center gap-2 press-effect"
+            style={{ fontSize: "13px", fontWeight: 600 }}
+          >
+            <Ban size={15} />
+            {t("cancelOrder") || "Cancel Order"}
+          </button>
+        )}
       </div>
     </div>
   );

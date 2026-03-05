@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useTranslation } from "../translation-context";
 import { useCurrency } from "../currency-context";
+import { useInvoice } from "../invoice-context";
 import { toast } from "sonner";
 import {
   Store,
@@ -32,7 +33,13 @@ import {
   ChevronUp,
   Loader2,
   Package,
+  Upload,
+  Image,
+  Trash2,
+  Receipt,
+  Building,
 } from "lucide-react";
+import { saveTelegramSettings, getTelegramStorageKey } from "../../../lib/telegram-notify";
 
 interface TelegramAlerts {
   newOrder: boolean;
@@ -68,11 +75,11 @@ interface RestaurantSettings {
 }
 
 const defaultSettings: RestaurantSettings = {
-  name: "Kafe Sans",
+  name: "POS Batto",
   nameKm: "កាហ្វេ សង់",
   address: "St. 214, Phnom Penh, Cambodia",
   phone: "+855 23 456 789",
-  email: "info@kafesans.kh",
+  email: "info@posbatto.kh",
   taxId: "TIN-KH-1234567",
   vatRate: 10,
   serviceCharge: 0,
@@ -93,19 +100,48 @@ const defaultSettings: RestaurantSettings = {
     orderVoid: true,
   },
   telegramConnected: false,
-  wifiName: "KafeSans-Guest",
+  wifiName: "POS-Batto-Guest",
   wifiPassword: "welcome2025",
   receiptFooter: "Thank you for dining with us!\nអរគុណសម្រាប់ការញ៉ាំ!",
 };
 
+function loadTelegramFromStorage(): Partial<RestaurantSettings> {
+  try {
+    const raw = localStorage.getItem(getTelegramStorageKey());
+    if (!raw) return {};
+    const data = JSON.parse(raw);
+    return {
+      telegramNotify: !!data.enabled,
+      telegramBotToken: data.botToken || "",
+      telegramChatId: data.chatId || "",
+      telegramAlerts: data.alerts
+        ? {
+            newOrder: data.alerts.newOrder !== false,
+            lowStock: data.alerts.lowStock !== false,
+            dailySummary: data.alerts.dailySummary !== false,
+            staffClock: !!data.alerts.staffClock,
+            paymentReceived: data.alerts.paymentReceived !== false,
+            orderVoid: data.alerts.orderVoid !== false,
+          }
+        : defaultSettings.telegramAlerts,
+      telegramConnected: !!data.enabled && !!data.botToken && !!data.chatId,
+    };
+  } catch {
+    return {};
+  }
+}
+
 export function AdminSettings() {
   const { lang, fontClass } = useTranslation();
   const { khrRate } = useCurrency();
-  const [settings, setSettings] = useState<RestaurantSettings>({
+  const { invoiceSettings, updateInvoiceSetting } = useInvoice();
+  const [settings, setSettings] = useState<RestaurantSettings>(() => ({
     ...defaultSettings,
     khrRate,
-  });
+    ...loadTelegramFromStorage(),
+  }));
   const [saved, setSaved] = useState(true);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   const update = <K extends keyof RestaurantSettings>(key: K, value: RestaurantSettings[K]) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
@@ -114,7 +150,45 @@ export function AdminSettings() {
 
   const handleSave = () => {
     setSaved(true);
+    // Sync restaurant info to invoice settings
+    updateInvoiceSetting("businessName", settings.name);
+    updateInvoiceSetting("businessNameKm", settings.nameKm);
+    updateInvoiceSetting("address", settings.address);
+    updateInvoiceSetting("phone", settings.phone);
+    updateInvoiceSetting("email", settings.email);
+    updateInvoiceSetting("taxId", settings.taxId);
+    updateInvoiceSetting("vatRate", settings.vatRate);
+    // Persist Telegram so POS can send automated alerts (e.g. payment received)
+    saveTelegramSettings({
+      enabled: settings.telegramNotify && !!settings.telegramBotToken && !!settings.telegramChatId,
+      botToken: settings.telegramBotToken,
+      chatId: settings.telegramChatId,
+      alerts: settings.telegramAlerts,
+    });
     toast.success(lang === "km" ? "បានរក្សាទុកការកំណត់" : "Settings saved");
+  };
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error(lang === "km" ? "ទំហំឯកសារធំពេក (អតិបរមា 2MB)" : "File too large (max 2MB)");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const result = ev.target?.result as string;
+      updateInvoiceSetting("logo", result);
+      setSaved(false);
+      toast.success(lang === "km" ? "បានផ្ទុកឡូហ្គោ" : "Logo uploaded!");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveLogo = () => {
+    updateInvoiceSetting("logo", "");
+    setSaved(false);
+    toast.info(lang === "km" ? "បានលុបឡូហ្គោ" : "Logo removed");
   };
 
   const Section = ({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) => (
@@ -157,11 +231,10 @@ export function AdminSettings() {
         <button
           onClick={handleSave}
           disabled={saved}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl transition-all ${
-            saved
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl transition-all ${saved
               ? "bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-default"
               : "bg-[#22C55E] text-white hover:bg-green-600 shadow-md shadow-green-200 dark:shadow-green-900"
-          }`}
+            }`}
           style={{ fontSize: "13px", fontWeight: 600 }}
         >
           <Save size={16} />
@@ -310,11 +383,10 @@ export function AdminSettings() {
                   <button
                     key={c}
                     onClick={() => update("currency", c)}
-                    className={`flex-1 py-2.5 rounded-xl border transition-all ${
-                      settings.currency === c
+                    className={`flex-1 py-2.5 rounded-xl border transition-all ${settings.currency === c
                         ? "border-[#22C55E] bg-[#22C55E]/5 text-[#22C55E]"
                         : "border-gray-200 dark:border-gray-700 text-gray-500"
-                    }`}
+                      }`}
                     style={{ fontSize: "13px", fontWeight: 600 }}
                   >
                     {c}
@@ -358,14 +430,12 @@ export function AdminSettings() {
             </div>
             <button
               onClick={() => update("printerEnabled", !settings.printerEnabled)}
-              className={`w-10 h-6 rounded-full transition-colors ${
-                settings.printerEnabled ? "bg-[#22C55E]" : "bg-gray-300 dark:bg-gray-600"
-              }`}
+              className={`w-10 h-6 rounded-full transition-colors ${settings.printerEnabled ? "bg-[#22C55E]" : "bg-gray-300 dark:bg-gray-600"
+                }`}
             >
               <div
-                className={`w-4 h-4 bg-white rounded-full shadow transition-transform mx-1 ${
-                  settings.printerEnabled ? "translate-x-4" : ""
-                }`}
+                className={`w-4 h-4 bg-white rounded-full shadow transition-transform mx-1 ${settings.printerEnabled ? "translate-x-4" : ""
+                  }`}
               />
             </button>
           </div>
@@ -414,6 +484,178 @@ export function AdminSettings() {
               rows={3}
               className={`${inputCls} resize-none`}
               style={{ fontSize: "13px" }}
+            />
+          </Field>
+        </Section>
+
+        {/* ========== INVOICE BRANDING ========== */}
+        <Section
+          title={lang === "km" ? "ម៉ារកវិក្កយបត្រ" : "Invoice Branding"}
+          icon={<Receipt size={18} />}
+        >
+          {/* Logo Upload */}
+          <div>
+            <label className="block text-gray-500 dark:text-gray-400 mb-2" style={{ fontSize: "12px", fontWeight: 500 }}>
+              {lang === "km" ? "ឡូហ្គោ ភោជនីយដ្ឋាន" : "Restaurant Logo"}
+            </label>
+            <div className="flex items-center gap-4">
+              {invoiceSettings.logo ? (
+                <div className="relative group">
+                  <img
+                    src={invoiceSettings.logo}
+                    alt="Logo"
+                    className="w-20 h-20 object-contain rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white"
+                  />
+                  <button
+                    onClick={handleRemoveLogo}
+                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ) : (
+                <div className="w-20 h-20 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center bg-gray-50 dark:bg-gray-800">
+                  <Image size={24} className="text-gray-300 dark:text-gray-600" />
+                </div>
+              )}
+              <div className="flex-1">
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                  onChange={handleLogoUpload}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => logoInputRef.current?.click()}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-[#22C55E] text-white rounded-xl hover:bg-green-600 transition-colors shadow-md shadow-green-200 dark:shadow-green-900"
+                  style={{ fontSize: "12px", fontWeight: 600 }}
+                >
+                  <Upload size={14} />
+                  {invoiceSettings.logo ? (lang === "km" ? "ប្ដូរឡូហ្គោ" : "Change Logo") : (lang === "km" ? "ផ្ទុកឡូហ្គោ" : "Upload Logo")}
+                </button>
+                <p className="text-gray-400 mt-1" style={{ fontSize: "10px" }}>
+                  PNG, JPG, SVG • {lang === "km" ? "អតិបរមា 2MB" : "Max 2MB"}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Toggle show logo */}
+          <div className="flex items-center justify-between">
+            <span className="text-gray-600 dark:text-gray-400" style={{ fontSize: "13px" }}>
+              {lang === "km" ? "បង្ហាញឡូហ្គោលើវិក្កយបត្រ" : "Show logo on invoice"}
+            </span>
+            <button
+              onClick={() => { updateInvoiceSetting("showLogo", !invoiceSettings.showLogo); setSaved(false); }}
+              className={`w-10 h-6 rounded-full transition-colors ${invoiceSettings.showLogo ? "bg-[#22C55E]" : "bg-gray-300 dark:bg-gray-600"}`}
+            >
+              <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform mx-1 ${invoiceSettings.showLogo ? "translate-x-4" : ""}`} />
+            </button>
+          </div>
+
+          {/* Business Tagline */}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={lang === "km" ? "ពាក្យស្លោក (English)" : "Tagline (English)"}>
+              <input
+                type="text"
+                value={invoiceSettings.tagline}
+                onChange={(e) => { updateInvoiceSetting("tagline", e.target.value); setSaved(false); }}
+                className={inputCls}
+                style={{ fontSize: "13px" }}
+                placeholder="Restaurant & Cafe"
+              />
+            </Field>
+            <Field label={lang === "km" ? "ពាក្យស្លោក (ខ្មែរ)" : "Tagline (Khmer)"}>
+              <input
+                type="text"
+                value={invoiceSettings.taglineKm}
+                onChange={(e) => { updateInvoiceSetting("taglineKm", e.target.value); setSaved(false); }}
+                className={inputCls}
+                style={{ fontSize: "13px" }}
+                placeholder="ភោជនីយដ្ឋាន និង កាហ្វេ"
+              />
+            </Field>
+          </div>
+
+          {/* Invoice Prefix */}
+          <Field label={lang === "km" ? "បុព្វបទវិក្កយបត្រ" : "Invoice Prefix"}>
+            <input
+              type="text"
+              value={invoiceSettings.invoicePrefix}
+              onChange={(e) => { updateInvoiceSetting("invoicePrefix", e.target.value); setSaved(false); }}
+              className={inputCls}
+              style={{ fontSize: "13px" }}
+              placeholder="INV"
+            />
+          </Field>
+
+          {/* Footer Notes */}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={lang === "km" ? "បាតកថា (English)" : "Footer Note (English)"}>
+              <input
+                type="text"
+                value={invoiceSettings.footerNote}
+                onChange={(e) => { updateInvoiceSetting("footerNote", e.target.value); setSaved(false); }}
+                className={inputCls}
+                style={{ fontSize: "13px" }}
+              />
+            </Field>
+            <Field label={lang === "km" ? "បាតកថា (ខ្មែរ)" : "Footer Note (Khmer)"}>
+              <input
+                type="text"
+                value={invoiceSettings.footerNoteKm}
+                onChange={(e) => { updateInvoiceSetting("footerNoteKm", e.target.value); setSaved(false); }}
+                className={inputCls}
+                style={{ fontSize: "13px" }}
+              />
+            </Field>
+          </div>
+        </Section>
+
+        {/* ========== BANK / PAYMENT DETAILS ========== */}
+        <Section
+          title={lang === "km" ? "ព័ត៌មានធនាគារ" : "Bank / Payment Details"}
+          icon={<Building size={18} />}
+        >
+          <Field label={lang === "km" ? "ឈ្មោះធនាគារ" : "Bank Name"}>
+            <input
+              type="text"
+              value={invoiceSettings.bankName}
+              onChange={(e) => { updateInvoiceSetting("bankName", e.target.value); setSaved(false); }}
+              className={inputCls}
+              style={{ fontSize: "13px" }}
+              placeholder="ABA Bank"
+            />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={lang === "km" ? "ឈ្មោះគណនី" : "Account Name"}>
+              <input
+                type="text"
+                value={invoiceSettings.accountName}
+                onChange={(e) => { updateInvoiceSetting("accountName", e.target.value); setSaved(false); }}
+                className={inputCls}
+                style={{ fontSize: "13px" }}
+              />
+            </Field>
+            <Field label={lang === "km" ? "លេខគណនី" : "Account Number"}>
+              <input
+                type="text"
+                value={invoiceSettings.accountNumber}
+                onChange={(e) => { updateInvoiceSetting("accountNumber", e.target.value); setSaved(false); }}
+                className={inputCls}
+                style={{ fontSize: "13px" }}
+              />
+            </Field>
+          </div>
+          <Field label={lang === "km" ? "គេហទំព័រ" : "Website"}>
+            <input
+              type="text"
+              value={invoiceSettings.website}
+              onChange={(e) => { updateInvoiceSetting("website", e.target.value); setSaved(false); }}
+              className={inputCls}
+              style={{ fontSize: "13px" }}
+              placeholder="www.posbatto.com"
             />
           </Field>
         </Section>
@@ -555,11 +797,10 @@ function TelegramSection({
               <button
                 onClick={handleTestConnection}
                 disabled={testing || !settings.telegramBotToken || !settings.telegramChatId}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${
-                  testing || !settings.telegramBotToken || !settings.telegramChatId
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${testing || !settings.telegramBotToken || !settings.telegramChatId
                     ? "bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed"
                     : "bg-blue-500 text-white hover:bg-blue-600 shadow-md shadow-blue-200 dark:shadow-blue-900"
-                }`}
+                  }`}
                 style={{ fontSize: "12px", fontWeight: 600 }}
               >
                 {testing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}

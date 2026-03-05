@@ -44,3 +44,19 @@ export function subscribeToMenuItems(callback: ChangeCallback<unknown>) {
 export function subscribeToInventory(callback: ChangeCallback<unknown>) {
   return subscribeToTable("inventory", callback);
 }
+
+export function subscribeToNotifications(callback: ChangeCallback<unknown>) {
+  return subscribeToTable("notifications", callback);
+}
+
+export function subscribeToSmartAlerts(callback: ChangeCallback<unknown>) {
+  return subscribeToTable("smart_alerts", callback);
+}
+
+export function subscribeToStaffShifts(callback: ChangeCallback<unknown>) {
+  return subscribeToTable("staff_shifts", callback);
+}
+
+export function subscribeToPayments(callback: ChangeCallback<unknown>) {
+  return subscribeToTable("payments", callback);
+}

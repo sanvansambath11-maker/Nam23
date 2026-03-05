@@ -46,7 +46,7 @@ export function ReceiptModal({ items, onClose }: ReceiptModalProps) {
             <div className="w-10 h-10 bg-[#22C55E] rounded-lg mx-auto mb-2 flex items-center justify-center">
               <span className="text-white" style={{ fontSize: "14px", fontWeight: 700 }}>K</span>
             </div>
-            <p className="text-gray-900 dark:text-white" style={{ fontSize: "16px", fontWeight: 700 }}>Kafe Sans</p>
+            <p className="text-gray-900 dark:text-white" style={{ fontSize: "16px", fontWeight: 700 }}>POS Batto</p>
             <p className="text-gray-400" style={{ fontSize: "11px" }}>Phnom Penh, Cambodia</p>
             <p className="text-gray-400" style={{ fontSize: "10px" }}>{t("phone")}: +855 23 123 456</p>
             <p className="text-gray-400 mt-1" style={{ fontSize: "10px" }}>

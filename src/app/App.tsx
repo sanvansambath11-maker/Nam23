@@ -5,11 +5,12 @@ import { ThemeProvider } from "./components/theme-context";
 import { CurrencyProvider } from "./components/currency-context";
 import { AuthProvider, useAuth } from "./components/auth-context";
 import { Navbar } from "./components/navbar";
-import { OrderList } from "./components/order-list";
 import { Categories } from "./components/categories";
 import { MenuGrid, type MenuItem } from "./components/menu-grid";
 import { OrderSidebar, type OrderItem } from "./components/order-sidebar";
 import { PaymentModal } from "./components/payment-modal";
+import { InvoiceModal } from "./components/invoice-modal";
+import { InvoiceProvider, useInvoice } from "./components/invoice-context";
 import { SplitBillModal } from "./components/split-bill-modal";
 import { ReceiptModal } from "./components/receipt-modal";
 import { KitchenView } from "./components/kitchen-view";
@@ -22,6 +23,10 @@ import { ItemCustomizationModal } from "./components/item-customization-modal";
 import { DailySummaryModal } from "./components/daily-summary-modal";
 import { AdminLayout } from "./components/admin/admin-layout";
 import { AnimatePresence } from "motion/react";
+import { notifyPaymentReceived } from "../lib/telegram-notify";
+import { createOrder } from "../lib/db-service";
+import { isSupabaseConfigured } from "../lib/supabase";
+import { addLocalOrder } from "../lib/local-orders";
 
 import { WebNavbar } from "./components/website/website-navbar";
 import { WebFooter } from "./components/website/website-footer";
@@ -33,24 +38,20 @@ import { ContactPage } from "./components/website/contact-page";
 import { RegisterPage } from "./components/website/register-page";
 import { LoginPage } from "./components/website/login-page";
 
-const initialItems: OrderItem[] = [
-  { id: 1, name: "Lok Lak", price: 5.50, quantity: 2, modifications: ["Extra pepper"] },
-  { id: 2, name: "Sugarcane Juice", price: 1.50, quantity: 1, modifications: ["Less sugar"] },
-  { id: 3, name: "Fish Amok", price: 6.00, quantity: 1 },
-];
+const initialItems: OrderItem[] = [];
 
 let nextId = 100;
 
 type AppView = "pos" | "admin";
 type AppMode = "website" | "dashboard";
 
-function POSDashboard() {
+function POSDashboard({ onBackToWebsite }: { onBackToWebsite?: () => void }) {
   const { t, fontClass } = useTranslation();
   const { user, isAuthenticated, isAdmin, login, logout, hasPermission } = useAuth();
   const [activeTab, setActiveTab] = useState("menu");
   const [activeCategory, setActiveCategory] = useState("allMenu");
   const [searchQuery, setSearchQuery] = useState("");
-  const [orderItems, setOrderItems] = useState<OrderItem[]>(initialItems);
+  const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [showPayment, setShowPayment] = useState(false);
   const [showSplitBill, setShowSplitBill] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
@@ -58,6 +59,10 @@ function POSDashboard() {
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [customizeItem, setCustomizeItem] = useState<MenuItem | null>(null);
   const [appView, setAppView] = useState<AppView>("pos");
+  const [showInvoice, setShowInvoice] = useState(false);
+  const [invoicePayMethod, setInvoicePayMethod] = useState("cash");
+  const [invoiceItems, setInvoiceItems] = useState<{ name: string; price: number; quantity: number; modifications?: string[] }[]>([]);
+  const { nextInvoiceNumber } = useInvoice();
 
   const subtotal = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const vat = subtotal * 0.10;
@@ -93,11 +98,109 @@ function POSDashboard() {
     toast.info("Item removed", { duration: 1000 });
   }, []);
 
-  const handlePaymentSuccess = () => {
+  const handlePaymentSuccess = async (paymentMethod: string) => {
+    const itemCount = orderItems.reduce((s, i) => s + i.quantity, 0);
+    const orderNumber = nextInvoiceNumber();
+    const restaurantName = (() => {
+      try {
+        const u = localStorage.getItem("battoclub_user");
+        if (!u) return undefined;
+        const j = JSON.parse(u);
+        return j.restaurantName ?? j.name ?? undefined;
+      } catch {
+        return undefined;
+      }
+    })();
+
+    // Save order to Supabase
+    if (isSupabaseConfigured()) {
+      try {
+        // Get restaurant_id from localStorage user data
+        let restaurantId = "";
+        try {
+          const u = localStorage.getItem("battoclub_user");
+          if (u) {
+            const j = JSON.parse(u);
+            restaurantId = j.restaurantId ?? j.restaurant_id ?? "";
+          }
+        } catch { /* ignore */ }
+
+        await createOrder({
+          restaurant_id: restaurantId,
+          order_number: orderNumber,
+          items: orderItems.map(i => ({ name: i.name, price: i.price, qty: i.quantity, mods: i.modifications })) as unknown as never,
+          subtotal: Number(subtotal.toFixed(2)),
+          vat: Number(vat.toFixed(2)),
+          discount: Number(discount.toFixed(2)),
+          total: Number(total.toFixed(2)),
+          payment_method: paymentMethod,
+          status: "served",
+          table_number: null,
+          customer_name: null,
+          staff_id: null,
+          notes: null,
+        });
+      } catch (err) {
+        console.error("Failed to save order:", err);
+      }
+    }
+
+    // Always save order locally (works without Supabase)
+    addLocalOrder({
+      order_number: orderNumber,
+      items: orderItems.map(i => ({ name: i.name, price: i.price, qty: i.quantity, mods: i.modifications })),
+      subtotal: Number(subtotal.toFixed(2)),
+      vat: Number(vat.toFixed(2)),
+      discount: Number(discount.toFixed(2)),
+      total: Number(total.toFixed(2)),
+      payment_method: paymentMethod,
+      status: "served",
+      table_number: null,
+      customer_name: null,
+      staff_name: null,
+    });
+
+    notifyPaymentReceived({
+      total,
+      paymentMethod,
+      itemCount,
+      restaurantName,
+    });
     setShowPayment(false);
+    // Save items for invoice before clearing
+    setInvoiceItems([...orderItems]);
+    setInvoicePayMethod(paymentMethod);
+    setShowInvoice(true);
     setOrderItems([]);
-    toast.success(t("paymentSuccess"), { duration: 3000 });
   };
+
+  const handleCancelOrder = useCallback(() => {
+    if (orderItems.length === 0) return;
+
+    const orderNumber = nextInvoiceNumber();
+    const subtotal = orderItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
+    const vatAmt = subtotal * 0.10;
+    const discountAmt = subtotal * 0.05;
+    const totalAmt = subtotal + vatAmt - discountAmt;
+
+    // Save cancelled order locally so admin can see it
+    addLocalOrder({
+      order_number: orderNumber,
+      items: orderItems.map(i => ({ name: i.name, price: i.price, qty: i.quantity, mods: i.modifications })),
+      subtotal: Number(subtotal.toFixed(2)),
+      vat: Number(vatAmt.toFixed(2)),
+      discount: Number(discountAmt.toFixed(2)),
+      total: Number(totalAmt.toFixed(2)),
+      payment_method: "none",
+      status: "cancelled",
+      table_number: null,
+      customer_name: null,
+      staff_name: user?.name ?? null,
+    });
+
+    setOrderItems([]);
+    toast.error(t("cancelOrder") || "Order cancelled", { duration: 2000, icon: "❌" });
+  }, [orderItems, nextInvoiceNumber, user]);
 
   const handleLogin = useCallback((staff: StaffMember) => {
     login({ ...staff, isActive: true });
@@ -119,7 +222,7 @@ function POSDashboard() {
   }, [isAdmin]);
 
   if (!isAuthenticated) {
-    return <StaffLogin onLogin={handleLogin} />;
+    return <StaffLogin onLogin={handleLogin} onBackToWebsite={onBackToWebsite} />;
   }
 
   if (appView === "admin" && isAdmin) {
@@ -161,7 +264,6 @@ function POSDashboard() {
       default:
         return (
           <div className="p-6">
-            <OrderList />
             <Categories activeCategory={activeCategory} onCategoryChange={setActiveCategory} />
             <MenuGrid
               onAddItem={handleAddItem}
@@ -182,11 +284,12 @@ function POSDashboard() {
       onPay={() => setShowPayment(true)}
       onSplitBill={() => setShowSplitBill(true)}
       onReceipt={() => setShowReceipt(true)}
+      onCancelOrder={handleCancelOrder}
     />
   );
 
   return (
-    <div className={`h-screen flex flex-col bg-[#F7F8FA] dark:bg-gray-950 ${useTranslation().fontClass}`}>
+    <div className={`h-screen flex flex-col premium-bg ${useTranslation().fontClass}`}>
       <Toaster position="top-right" richColors />
       <Navbar
         activeTab={activeTab}
@@ -205,7 +308,7 @@ function POSDashboard() {
       />
 
       <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto premium-scrollbar">
           {renderMainContent()}
         </div>
 
@@ -229,7 +332,7 @@ function POSDashboard() {
 
       <AnimatePresence>
         {showPayment && (
-          <PaymentModal key="payment" total={total} onClose={() => setShowPayment(false)} onSuccess={handlePaymentSuccess} />
+          <PaymentModal key="payment" total={total} items={orderItems} onClose={() => setShowPayment(false)} onSuccess={handlePaymentSuccess} />
         )}
         {showSplitBill && (
           <SplitBillModal key="splitbill" total={total} onClose={() => setShowSplitBill(false)} />
@@ -247,6 +350,15 @@ function POSDashboard() {
         )}
         {showDailySummary && (
           <DailySummaryModal key="dailysummary" onClose={() => setShowDailySummary(false)} />
+        )}
+        {showInvoice && (
+          <InvoiceModal
+            key="invoice"
+            items={invoiceItems}
+            paymentMethod={invoicePayMethod}
+            onClose={() => setShowInvoice(false)}
+            onNewOrder={() => { setShowInvoice(false); setOrderItems([]); }}
+          />
         )}
       </AnimatePresence>
     </div>
@@ -295,10 +407,20 @@ function WebsiteShell({ onEnterDashboard }: { onEnterDashboard: () => void }) {
   );
 }
 
+function isValidRestaurantUser(raw: string | null): boolean {
+  if (!raw || typeof raw !== "string") return false;
+  try {
+    const data = JSON.parse(raw);
+    return !!(data && (data.restaurantName ?? data.name ?? data.owner_name));
+  } catch {
+    return false;
+  }
+}
+
 function AppContent() {
   const [mode, setMode] = useState<AppMode>(() => {
     const saved = localStorage.getItem("battoclub_user");
-    return saved ? "dashboard" : "website";
+    return isValidRestaurantUser(saved) ? "dashboard" : "website";
   });
 
   const handleEnterDashboard = () => setMode("dashboard");
@@ -313,7 +435,7 @@ function AppContent() {
 
   return (
     <AuthProvider>
-      <POSDashboard />
+      <POSDashboard onBackToWebsite={handleBackToWebsite} />
     </AuthProvider>
   );
 }
@@ -323,7 +445,9 @@ export default function App() {
     <ThemeProvider>
       <TranslationProvider>
         <CurrencyProvider>
-          <AppContent />
+          <InvoiceProvider>
+            <AppContent />
+          </InvoiceProvider>
         </CurrencyProvider>
       </TranslationProvider>
     </ThemeProvider>

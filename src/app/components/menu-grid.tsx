@@ -1,5 +1,5 @@
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-import { Plus, Star } from "lucide-react";
+import { Plus, Star, UtensilsCrossed } from "lucide-react";
 import { useTranslation } from "./translation-context";
 import { useCurrency } from "./currency-context";
 
@@ -129,16 +129,25 @@ export function MenuGrid({ onAddItem, searchQuery, activeCategory, onCustomize }
 
   return (
     <div className={fontClass}>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-gray-900 dark:text-white" style={{ fontSize: "15px", fontWeight: 600 }}>{t("specialMenu")}</h3>
-        <button className="text-[#22C55E]" style={{ fontSize: "12px", fontWeight: 500 }}>{t("viewAll")}</button>
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-2.5">
+          <div className="w-1 h-5 rounded-full gradient-primary" />
+          <h3 className="text-gray-900 dark:text-white" style={{ fontSize: "16px", fontWeight: 700 }}>{t("specialMenu")}</h3>
+          <span className="px-2 py-0.5 rounded-lg gradient-primary-soft text-[#22C55E]" style={{ fontSize: "11px", fontWeight: 600 }}>
+            {filtered.length} {lang === "km" ? "មុខ" : "items"}
+          </span>
+        </div>
+        <button className="gradient-text hover:opacity-80 transition-opacity" style={{ fontSize: "12px", fontWeight: 600 }}>{t("viewAll")}</button>
       </div>
       {filtered.length === 0 ? (
-        <div className="text-center py-12 text-gray-400">
-          <p style={{ fontSize: "14px" }}>{t("noResults")}</p>
+        <div className="text-center py-16 text-gray-400 animate-fade-in-up">
+          <div className="w-16 h-16 mx-auto mb-3 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+            <UtensilsCrossed size={24} className="text-gray-300" />
+          </div>
+          <p style={{ fontSize: "14px", fontWeight: 500 }}>{t("noResults")}</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 stagger-children">
           {filtered.map((item) => {
             const dual = formatDual(item.price);
             const displayName = lang === "km" ? item.nameKm : item.name;
@@ -146,55 +155,84 @@ export function MenuGrid({ onAddItem, searchQuery, activeCategory, onCustomize }
               <div
                 key={item.id}
                 onClick={() => item.customizationEnabled === false ? onAddItem(item) : onCustomize?.(item)}
-                className="bg-white dark:bg-gray-800 rounded-2xl overflow-hidden shadow-sm border border-gray-50 dark:border-gray-700 hover:shadow-lg transition-all group cursor-pointer"
+                className="glass-card rounded-2xl overflow-hidden hover-lift cursor-pointer group animate-fade-in-up relative"
               >
-                <div className="relative h-32 overflow-hidden">
+                {/* Image Section */}
+                <div className="relative h-36 overflow-hidden">
                   <ImageWithFallback
                     src={item.image}
                     alt={item.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                   />
+                  {/* Gradient overlay on hover */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+                  {/* Badges */}
                   {item.discount && (
                     <div
-                      className="absolute top-2 left-2 bg-[#22C55E] text-white px-2 py-0.5 rounded-lg"
-                      style={{ fontSize: "10px", fontWeight: 700 }}
+                      className="absolute top-2.5 left-2.5 gradient-badge px-2.5 py-1 rounded-xl animate-fade-in-scale"
+                      style={{ fontSize: "10px", fontWeight: 700, letterSpacing: "0.3px" }}
                     >
-                      {item.discount}% {t("off")}
+                      ⚡ {item.discount}% {t("off")}
                     </div>
                   )}
                   {item.recommended && (
                     <div
-                      className="absolute top-2 right-2 bg-red-500 text-white px-2 py-0.5 rounded-lg"
+                      className="absolute top-2.5 right-2.5 gradient-badge-hot px-2.5 py-1 rounded-xl"
                       style={{ fontSize: "10px", fontWeight: 600 }}
                     >
-                      {t("recommended")}
+                      🔥 {t("recommended")}
                     </div>
                   )}
-                </div>
-                <div className="p-3">
-                  <div className="flex items-center gap-1 mb-1">
-                    <Star size={12} className="text-yellow-400 fill-yellow-400" />
-                    <span className="text-gray-500" style={{ fontSize: "11px", fontWeight: 500 }}>{item.rating}</span>
+
+                  {/* Quick Add overlay */}
+                  <div className="absolute bottom-2.5 right-2.5 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-2 group-hover:translate-y-0">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onAddItem(item); }}
+                      className="w-9 h-9 gradient-primary rounded-xl flex items-center justify-center shadow-lg gradient-glow press-effect"
+                    >
+                      <Plus size={16} className="text-white" />
+                    </button>
                   </div>
-                  <p className="text-gray-800 dark:text-gray-200 mb-0.5" style={{ fontSize: "13px", fontWeight: 600, lineHeight: "1.3" }}>{displayName}</p>
+                </div>
+
+                {/* Content */}
+                <div className="p-3.5">
+                  {/* Rating */}
+                  <div className="flex items-center gap-1 mb-1.5">
+                    <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-900/20">
+                      <Star size={11} className="text-amber-400 fill-amber-400" />
+                      <span className="text-amber-600 dark:text-amber-400" style={{ fontSize: "11px", fontWeight: 600 }}>{item.rating}</span>
+                    </div>
+                    <span className="text-gray-300 dark:text-gray-600" style={{ fontSize: "9px" }}>•</span>
+                    <span className="text-gray-400" style={{ fontSize: "10px" }}>{item.category}</span>
+                  </div>
+
+                  {/* Name */}
+                  <p className="text-gray-800 dark:text-gray-100 mb-0.5 group-hover:text-[#22C55E] transition-colors" style={{ fontSize: "14px", fontWeight: 600, lineHeight: "1.3" }}>
+                    {displayName}
+                  </p>
                   {lang === "km" && (
-                    <p className="text-gray-400 mb-1" style={{ fontSize: "10px", lineHeight: "1.2" }}>{item.name}</p>
+                    <p className="text-gray-400 mb-2" style={{ fontSize: "10px", lineHeight: "1.2" }}>{item.name}</p>
                   )}
-                  <div className="flex items-center justify-between">
+
+                  {/* Price */}
+                  <div className="flex items-end justify-between mt-auto">
                     <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[#22C55E]" style={{ fontSize: "15px", fontWeight: 700 }}>{formatPrice(item.price)}</span>
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="gradient-text" style={{ fontSize: "17px", fontWeight: 800 }}>{formatPrice(item.price)}</span>
                         {item.oldPrice && (
                           <span className="text-gray-400 line-through" style={{ fontSize: "11px" }}>{formatPrice(item.oldPrice)}</span>
                         )}
                       </div>
-                      <p className="text-gray-400" style={{ fontSize: "9px" }}>
+                      <p className="text-gray-400" style={{ fontSize: "9px", marginTop: "1px" }}>
                         {dual.usd} / {dual.khr}
                       </p>
                     </div>
+                    {/* Add button (visible on non-hover / mobile) */}
                     <button
                       onClick={(e) => { e.stopPropagation(); onAddItem(item); }}
-                      className="w-7 h-7 bg-[#22C55E] rounded-lg flex items-center justify-center hover:bg-green-600 transition-colors shadow-md shadow-green-200 dark:shadow-green-900"
+                      className="w-8 h-8 gradient-primary rounded-xl flex items-center justify-center shadow-md shadow-green-200 dark:shadow-green-900 hover:shadow-lg transition-all press-effect lg:opacity-100 group-hover:lg:opacity-0"
                     >
                       <Plus size={14} className="text-white" />
                     </button>

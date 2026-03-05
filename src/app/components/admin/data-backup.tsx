@@ -22,7 +22,7 @@ const mockBackups: BackupRecord[] = [
 ];
 
 const mockExportData = {
-  restaurant: { name: "Kafe Sans", address: "St. 214, Phnom Penh", phone: "+855 23 456 789" },
+  restaurant: { name: "POS Batto", address: "St. 214, Phnom Penh", phone: "+855 23 456 789" },
   staff: [
     { id: 1, name: "Sokha Chan", role: "manager" },
     { id: 2, name: "Dara Pich", role: "cashier" },
@@ -51,7 +51,7 @@ export function DataBackup() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `kafesans_backup_${new Date().toISOString().split("T")[0]}.json`;
+    a.download = `posbatto_backup_${new Date().toISOString().split("T")[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success(l("Data exported as JSON", "បានចេញទិន្នន័យជា JSON"));
@@ -76,7 +76,7 @@ export function DataBackup() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `kafesans_backup_${new Date().toISOString().split("T")[0]}.csv`;
+    a.download = `posbatto_backup_${new Date().toISOString().split("T")[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success(l("Data exported as CSV", "បានចេញទិន្នន័យជា CSV"));

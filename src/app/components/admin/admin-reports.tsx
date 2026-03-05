@@ -1,4 +1,7 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { getLocalOrders } from "../../../lib/local-orders";
+import { getOrders } from "../../../lib/db-service";
+import { isSupabaseConfigured } from "../../../lib/supabase";
 import { useTranslation } from "../translation-context";
 import { useCurrency } from "../currency-context";
 import {
@@ -42,56 +45,19 @@ import autoTable from "jspdf-autotable";
 type ReportTab = "sales" | "items" | "staff" | "categories" | "payments";
 type DateRange = "today" | "week" | "month" | "custom";
 
-/* ─── Mock Data ─── */
+/* ─── Dynamic Data ─── */
 
-const dailySalesData = [
-  { date: "Feb 25", revenue: 285, orders: 38, customers: 25 },
-  { date: "Feb 26", revenue: 420, orders: 55, customers: 36 },
-  { date: "Feb 27", revenue: 360, orders: 48, customers: 31 },
-  { date: "Feb 28", revenue: 510, orders: 68, customers: 44 },
-  { date: "Mar 01", revenue: 680, orders: 88, customers: 57 },
-  { date: "Mar 02", revenue: 790, orders: 102, customers: 68 },
-  { date: "Mar 03", revenue: 620, orders: 80, customers: 52 },
-];
+export type DailyData = { date: string; revenue: number; orders: number; customers: number };
+export type ItemPerformanceData = { name: string; nameKm: string; sold: number; revenue: number; avgRating: number; category: string };
+export type StaffData = { name: string; nameKm: string; role: string; orders: number; revenue: number; avgOrder: number; hours: number };
+export type CategoryData = { name: string; nameKm: string; revenue: number; orders: number; items: number; color: string };
+export type PaymentData = { method: string; methodKm: string; transactions: number; total: number; percentage: number; color: string };
 
-const itemPerformanceData = [
-  { name: "Lok Lak", nameKm: "លុកឡាក់", sold: 142, revenue: 781, avgRating: 4.9, category: "khmer" },
-  { name: "Fish Amok", nameKm: "អាម៉ុកត្រី", sold: 118, revenue: 708, avgRating: 4.8, category: "khmer" },
-  { name: "Kuy Teav", nameKm: "គុយទាវ", sold: 105, revenue: 367.5, avgRating: 4.9, category: "noodle" },
-  { name: "Sugarcane Juice", nameKm: "ទឹកអំពើ", sold: 198, revenue: 297, avgRating: 4.5, category: "drinks" },
-  { name: "Bai Sach Chrouk", nameKm: "បាយសាច់ជ្រូក", sold: 96, revenue: 336, avgRating: 4.8, category: "rice" },
-  { name: "Bai Cha", nameKm: "បាយឆា", sold: 88, revenue: 352, avgRating: 4.7, category: "rice" },
-  { name: "Nom Banh Chok", nameKm: "នំបញ្ចុក", sold: 82, revenue: 246, avgRating: 4.7, category: "noodle" },
-  { name: "Samlor Korko", nameKm: "សម្លកកូ", sold: 75, revenue: 337.5, avgRating: 4.6, category: "khmer" },
-  { name: "Fresh Orange Juice", nameKm: "ទឹកក្រូចថ្លុង", sold: 130, revenue: 260, avgRating: 4.5, category: "drinks" },
-  { name: "Grilled Fish", nameKm: "ត្រីអាំង", sold: 52, revenue: 416, avgRating: 4.6, category: "seafood" },
-  { name: "Garden Fresh Salad", nameKm: "សាឡាតស្រស់", sold: 45, revenue: 157.5, avgRating: 4.3, category: "salad" },
-  { name: "Num Ansom", nameKm: "នំអន្សំ", sold: 38, revenue: 95, avgRating: 4.4, category: "dessert" },
-];
-
-const staffPerformanceData = [
-  { name: "Sokha Chan", nameKm: "សុខា ចាន", role: "manager", orders: 45, revenue: 1230, avgOrder: 27.3, hours: 42 },
-  { name: "Dara Pich", nameKm: "ដារា ពិច", role: "cashier", orders: 185, revenue: 4520, avgOrder: 24.4, hours: 40 },
-  { name: "Veasna Kem", nameKm: "វាសនា កែម", role: "chef", orders: 210, revenue: 5100, avgOrder: 24.3, hours: 44 },
-  { name: "Bopha Meas", nameKm: "បុផ្ផា មាស", role: "waiter", orders: 165, revenue: 3890, avgOrder: 23.6, hours: 38 },
-];
-
-const categoryBreakdownData = [
-  { name: "Khmer", nameKm: "ខ្មែរ", revenue: 1826.5, orders: 335, items: 3, color: "#22C55E" },
-  { name: "Rice", nameKm: "បាយ", revenue: 688, orders: 184, items: 2, color: "#3B82F6" },
-  { name: "Noodle", nameKm: "មី", revenue: 613.5, orders: 187, items: 2, color: "#F59E0B" },
-  { name: "Drinks", nameKm: "ភេសជ្ជៈ", revenue: 557, orders: 328, items: 2, color: "#A855F7" },
-  { name: "Seafood", nameKm: "មហូបសមុទ្រ", revenue: 416, orders: 52, items: 1, color: "#EF4444" },
-  { name: "Salad", nameKm: "សាឡាត", revenue: 157.5, orders: 45, items: 1, color: "#14B8A6" },
-  { name: "Dessert", nameKm: "បង្អែម", revenue: 95, orders: 38, items: 1, color: "#EC4899" },
-];
-
-const paymentMethodsData = [
-  { method: "Cash", methodKm: "សាច់ប្រាក់", transactions: 312, total: 7620, percentage: 52, color: "#22C55E" },
-  { method: "Card", methodKm: "កាត", transactions: 168, total: 4350, percentage: 28, color: "#3B82F6" },
-  { method: "KHQR", methodKm: "KHQR", transactions: 89, total: 2180, percentage: 15, color: "#A855F7" },
-  { method: "ABA Pay", methodKm: "ABA Pay", transactions: 32, total: 700, percentage: 5, color: "#F59E0B" },
-];
+let dailySalesData: DailyData[] = [];
+let itemPerformanceData: ItemPerformanceData[] = [];
+let staffPerformanceData: StaffData[] = [];
+let categoryBreakdownData: CategoryData[] = [];
+let paymentMethodsData: PaymentData[] = [];
 
 /* ─── Labels ─── */
 
@@ -138,7 +104,7 @@ function generatePDF(
   const doc = new jsPDF();
   doc.setFontSize(18);
   doc.setTextColor(34, 197, 94);
-  doc.text("Kafe Sans", 14, 18);
+  doc.text("POS Batto", 14, 18);
   doc.setFontSize(10);
   doc.setTextColor(120, 120, 120);
   doc.text("Restaurant POS Report", 14, 24);
@@ -182,6 +148,52 @@ export function AdminReports() {
   const [dateRange, setDateRange] = useState<DateRange>("week");
   const [sortField, setSortField] = useState<string>("sold");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [, setTrigger] = useState(0);
+
+  useEffect(() => {
+    async function loadAllOrders() {
+      // Use only local orders - real POS data starting from zero
+      const orders = getLocalOrders(1000);
+
+      // Process dailySalesData
+      const dMap: Record<string, DailyData> = {};
+      const iMap: Record<string, ItemPerformanceData> = {};
+      const pMap: Record<string, PaymentData> = {};
+
+      let totalSysRevenue = 0;
+
+      orders.forEach((o: any) => {
+        const day = new Date(o.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        if (!dMap[day]) dMap[day] = { date: day, revenue: 0, orders: 0, customers: 0 };
+        dMap[day].revenue += o.total;
+        dMap[day].orders += 1;
+        if (o.customer_name) dMap[day].customers += 1;
+
+        // Items
+        o.items.forEach(itm => {
+          if (!iMap[itm.name]) iMap[itm.name] = { name: itm.name, nameKm: itm.name, sold: 0, revenue: 0, avgRating: 5, category: "Menu" };
+          iMap[itm.name].sold += itm.qty;
+          iMap[itm.name].revenue += itm.qty * itm.price;
+        });
+
+        // Payments
+        const payMethod = o.payment_method || "cash";
+        if (!pMap[payMethod]) pMap[payMethod] = { method: payMethod, methodKm: payMethod, transactions: 0, total: 0, percentage: 0, color: "#3B82F6" };
+        pMap[payMethod].transactions += 1;
+        pMap[payMethod].total += o.total;
+
+        totalSysRevenue += o.total;
+      });
+
+      dailySalesData = Object.values(dMap).slice(-10);
+      itemPerformanceData = Object.values(iMap).sort((a, b) => b.sold - a.sold);
+      paymentMethodsData = Object.values(pMap).map(p => ({ ...p, percentage: totalSysRevenue ? Math.round((p.total / totalSysRevenue) * 100) : 0 }));
+
+      setTrigger(t => t + 1);
+    }
+
+    loadAllOrders();
+  }, []);
 
   const l = useCallback((en: string, km: string) => (lang === "km" ? km : en), [lang]);
 
@@ -367,11 +379,10 @@ export function AdminReports() {
             <button
               key={tab}
               onClick={() => setActiveReport(tab)}
-              className={`px-3 py-2 rounded-xl whitespace-nowrap transition-all ${
-                activeReport === tab
-                  ? "bg-[#22C55E] text-white shadow-md shadow-green-200 dark:shadow-green-900"
-                  : "bg-white dark:bg-gray-900 text-gray-500 border border-gray-200 dark:border-gray-700 hover:border-[#22C55E] hover:text-[#22C55E]"
-              }`}
+              className={`px-3 py-2 rounded-xl whitespace-nowrap transition-all ${activeReport === tab
+                ? "bg-[#22C55E] text-white shadow-md shadow-green-200 dark:shadow-green-900"
+                : "bg-white dark:bg-gray-900 text-gray-500 border border-gray-200 dark:border-gray-700 hover:border-[#22C55E] hover:text-[#22C55E]"
+                }`}
               style={{ fontSize: "12px", fontWeight: activeReport === tab ? 600 : 500 }}
             >
               {lang === "km" ? reportTabLabels[tab].km : reportTabLabels[tab].en}
@@ -386,11 +397,10 @@ export function AdminReports() {
               <button
                 key={dr}
                 onClick={() => setDateRange(dr)}
-                className={`px-2.5 py-1.5 rounded-md transition-all ${
-                  dateRange === dr
-                    ? "bg-white dark:bg-gray-700 shadow text-gray-900 dark:text-white"
-                    : "text-gray-500"
-                }`}
+                className={`px-2.5 py-1.5 rounded-md transition-all ${dateRange === dr
+                  ? "bg-white dark:bg-gray-700 shadow text-gray-900 dark:text-white"
+                  : "text-gray-500"
+                  }`}
                 style={{ fontSize: "11px", fontWeight: 500 }}
               >
                 <Calendar size={10} className="inline mr-1" />
@@ -471,10 +481,10 @@ function SalesReportView({
   formatPrice: (n: number) => string;
 }) {
   const stats = [
-    { label: l("Total Revenue", "ចំណូលសរុប"), value: formatPrice(summary.totalRevenue), icon: <DollarSign size={18} />, color: "#22C55E", change: "+12.5%" },
-    { label: l("Total Orders", "បញ្ជាសរុប"), value: summary.totalOrders.toString(), icon: <ShoppingBag size={18} />, color: "#3B82F6", change: "+8.3%" },
-    { label: l("Customers", "អតិថិជន"), value: summary.totalCustomers.toString(), icon: <Users size={18} />, color: "#A855F7", change: "+15.2%" },
-    { label: l("Avg Order", "មធ្យមបញ្ជា"), value: formatPrice(summary.avgOrder), icon: <TrendingUp size={18} />, color: "#F59E0B", change: "+3.1%" },
+    { label: l("Total Revenue", "ចំណូលសរុប"), value: formatPrice(summary.totalRevenue), icon: <DollarSign size={18} />, color: "#22C55E", change: "0%" },
+    { label: l("Total Orders", "បញ្ជាសរុប"), value: summary.totalOrders.toString(), icon: <ShoppingBag size={18} />, color: "#3B82F6", change: "0%" },
+    { label: l("Customers", "អតិថិជន"), value: summary.totalCustomers.toString(), icon: <Users size={18} />, color: "#A855F7", change: "0%" },
+    { label: l("Avg Order", "មធ្យមបញ្ជា"), value: formatPrice(summary.avgOrder), icon: <TrendingUp size={18} />, color: "#F59E0B", change: "0%" },
   ];
 
   return (

@@ -1,43 +1,14 @@
 import { X, TrendingUp, DollarSign, ShoppingBag, Users, CreditCard, Banknote, QrCode, Star } from "lucide-react";
+import { useMemo } from "react";
 import { useTranslation } from "./translation-context";
 import { useCurrency } from "./currency-context";
 import { motion } from "motion/react";
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from "recharts";
+import { getLocalOrdersToday } from "../../lib/local-orders";
 
 interface DailySummaryModalProps {
   onClose: () => void;
 }
-
-const hourlyData = [
-  { hour: "9am", orders: 5, revenue: 38 },
-  { hour: "10am", orders: 12, revenue: 89 },
-  { hour: "11am", orders: 22, revenue: 165 },
-  { hour: "12pm", orders: 38, revenue: 285 },
-  { hour: "1pm", orders: 35, revenue: 262 },
-  { hour: "2pm", orders: 18, revenue: 135 },
-  { hour: "3pm", orders: 10, revenue: 75 },
-  { hour: "4pm", orders: 8, revenue: 60 },
-  { hour: "5pm", orders: 15, revenue: 112 },
-  { hour: "6pm", orders: 32, revenue: 240 },
-  { hour: "7pm", orders: 40, revenue: 300 },
-  { hour: "8pm", orders: 28, revenue: 210 },
-  { hour: "9pm", orders: 15, revenue: 112 },
-];
-
-const topItems = [
-  { name: "Lok Lak", nameKm: "\u179B\u17BB\u1780\u17A1\u17B6\u1780\u17CB", qty: 48, revenue: 264 },
-  { name: "Fish Amok", nameKm: "\u17A2\u17B6\u1798\u17C9\u17BB\u1780\u178F\u17D2\u179A\u17B8", qty: 35, revenue: 210 },
-  { name: "Kuy Teav", nameKm: "\u1782\u17BB\u1799\u1791\u17B6\u179C", qty: 32, revenue: 112 },
-  { name: "Bai Sach Chrouk", nameKm: "\u1794\u17B6\u1799\u179F\u17B6\u1785\u17CB\u1787\u17D2\u179A\u17BC\u1780", qty: 28, revenue: 98 },
-  { name: "Sugarcane Juice", nameKm: "\u1791\u17B9\u1780\u17A2\u17C6\u1796\u17BE", qty: 42, revenue: 63 },
-];
-
-const paymentBreakdown = [
-  { method: "cash", label: "Cash", labelKm: "\u179F\u17B6\u1785\u17CB\u1794\u17D2\u179A\u17B6\u1780\u17CB", amount: 820, pct: 40, icon: <Banknote size={16} />, color: "#22C55E" },
-  { method: "khqr", label: "KHQR", labelKm: "KHQR", amount: 615, pct: 30, icon: <QrCode size={16} />, color: "#3B82F6" },
-  { method: "card", label: "Card", labelKm: "\u1780\u17B6\u178F", amount: 410, pct: 20, icon: <CreditCard size={16} />, color: "#A855F7" },
-  { method: "mobile", label: "Mobile Banking", labelKm: "Mobile Banking", amount: 205, pct: 10, icon: <DollarSign size={16} />, color: "#F59E0B" },
-];
 
 export function DailySummaryModal({ onClose }: DailySummaryModalProps) {
   const { t, lang, fontClass } = useTranslation();
@@ -46,10 +17,63 @@ export function DailySummaryModal({ onClose }: DailySummaryModalProps) {
   const now = new Date();
   const dateStr = `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
 
-  const totalRevenue = 2050;
-  const totalOrders = 278;
-  const totalCustomers = 195;
-  const avgOrder = totalRevenue / totalOrders;
+  // Build all summary data from local orders
+  const { totalRevenue, totalOrders, totalCustomers, avgOrder, hourlyData, topItems, paymentBreakdown } = useMemo(() => {
+    const orders = getLocalOrdersToday();
+    const rev = orders.reduce((s, o) => s + o.total, 0);
+    const cnt = orders.length;
+    const custs = new Set(orders.map(o => o.customer_name || "walk-in")).size;
+
+    // Hourly chart
+    const hourLabels = ["9am", "10am", "11am", "12pm", "1pm", "2pm", "3pm", "4pm", "5pm", "6pm", "7pm", "8pm", "9pm"];
+    const hMap: Record<string, { orders: number; revenue: number }> = {};
+    hourLabels.forEach(h => { hMap[h] = { orders: 0, revenue: 0 }; });
+    orders.forEach(o => {
+      const hr = new Date(o.created_at).getHours();
+      if (hr >= 9 && hr <= 21) {
+        const idx = hr - 9;
+        if (idx < hourLabels.length) {
+          hMap[hourLabels[idx]].orders += 1;
+          hMap[hourLabels[idx]].revenue += o.total;
+        }
+      }
+    });
+    const hData = hourLabels.map(h => ({ hour: h, orders: hMap[h].orders, revenue: hMap[h].revenue }));
+
+    // Top items
+    const iMap: Record<string, { name: string; qty: number; revenue: number }> = {};
+    orders.forEach(o => {
+      o.items.forEach(itm => {
+        if (!iMap[itm.name]) iMap[itm.name] = { name: itm.name, qty: 0, revenue: 0 };
+        iMap[itm.name].qty += itm.qty;
+        iMap[itm.name].revenue += itm.qty * itm.price;
+      });
+    });
+    const tItems = Object.values(iMap).sort((a, b) => b.qty - a.qty).slice(0, 5).map(i => ({ ...i, nameKm: i.name }));
+
+    // Payment breakdown
+    const pMap: Record<string, number> = {};
+    orders.forEach(o => {
+      const m = o.payment_method || "cash";
+      pMap[m] = (pMap[m] || 0) + o.total;
+    });
+    const pBreak = [
+      { method: "cash", label: "Cash", labelKm: "សាច់ប្រាក់", amount: pMap["cash"] || 0, pct: 0, color: "#22C55E" },
+      { method: "khqr", label: "KHQR", labelKm: "KHQR", amount: (pMap["khqr"] || 0) + (pMap["aba"] || 0) + (pMap["acleda"] || 0) + (pMap["wing"] || 0) + (pMap["pipay"] || 0) + (pMap["truemoney"] || 0) + (pMap["bakong"] || 0), pct: 0, color: "#3B82F6" },
+      { method: "card", label: "Card", labelKm: "កាត", amount: pMap["card"] || 0, pct: 0, color: "#A855F7" },
+    ];
+    pBreak.forEach(p => { p.pct = rev > 0 ? Math.round((p.amount / rev) * 100) : 0; });
+
+    return {
+      totalRevenue: rev,
+      totalOrders: cnt,
+      totalCustomers: custs,
+      avgOrder: cnt > 0 ? rev / cnt : 0,
+      hourlyData: hData,
+      topItems: tItems,
+      paymentBreakdown: pBreak,
+    };
+  }, []);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -122,7 +146,7 @@ export function DailySummaryModal({ onClose }: DailySummaryModalProps) {
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${pm.color}15`, color: pm.color }}>
-                          {pm.icon}
+                          {pm.method === "cash" ? <Banknote size={16} /> : pm.method === "khqr" ? <QrCode size={16} /> : <CreditCard size={16} />}
                         </div>
                         <span className="text-gray-700 dark:text-gray-300" style={{ fontSize: "12px", fontWeight: 500 }}>
                           {lang === "km" ? pm.labelKm : pm.label}
@@ -155,9 +179,8 @@ export function DailySummaryModal({ onClose }: DailySummaryModalProps) {
               <div className="space-y-2.5">
                 {topItems.map((item, i) => (
                   <div key={item.name} className="flex items-center gap-2.5">
-                    <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-white shrink-0 ${
-                      i === 0 ? "bg-yellow-400" : i === 1 ? "bg-gray-400" : i === 2 ? "bg-amber-600" : "bg-gray-300"
-                    }`} style={{ fontSize: "10px", fontWeight: 700 }}>
+                    <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-white shrink-0 ${i === 0 ? "bg-yellow-400" : i === 1 ? "bg-gray-400" : i === 2 ? "bg-amber-600" : "bg-gray-300"
+                      }`} style={{ fontSize: "10px", fontWeight: 700 }}>
                       {i < 3 ? <Star size={12} className="fill-current" /> : i + 1}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -178,7 +201,7 @@ export function DailySummaryModal({ onClose }: DailySummaryModalProps) {
           {/* Footer */}
           <div className="flex items-center justify-between pt-3 border-t border-gray-100 dark:border-gray-800">
             <div className="flex items-center gap-2 text-gray-400">
-              <p style={{ fontSize: "10px" }}>Kafe Sans &bull; {dateStr} &bull; TIN: K001-2024-00458</p>
+              <p style={{ fontSize: "10px" }}>POS Batto &bull; {dateStr} &bull; TIN: K001-2024-00458</p>
             </div>
             <button
               onClick={onClose}

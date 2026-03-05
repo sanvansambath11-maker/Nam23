@@ -45,7 +45,7 @@ const initialStaff: StaffRecord[] = [
     initials: "SC",
     isActive: true,
     phone: "012 345 678",
-    email: "sokha@kafesans.kh",
+    email: "sokha@posbatto.kh",
   },
   {
     id: 2,
@@ -59,7 +59,7 @@ const initialStaff: StaffRecord[] = [
     initials: "DP",
     isActive: true,
     phone: "012 987 654",
-    email: "dara@kafesans.kh",
+    email: "dara@posbatto.kh",
   },
   {
     id: 3,

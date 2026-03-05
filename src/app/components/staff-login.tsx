@@ -59,9 +59,10 @@ const roleLabels: Record<StaffRole, { en: string; km: string }> = {
 
 interface StaffLoginProps {
   onLogin: (staff: StaffMember) => void;
+  onBackToWebsite?: () => void;
 }
 
-export function StaffLogin({ onLogin }: StaffLoginProps) {
+export function StaffLogin({ onLogin, onBackToWebsite }: StaffLoginProps) {
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
   const [pin, setPin] = useState("");
   const [error, setError] = useState(false);
@@ -137,11 +138,11 @@ export function StaffLogin({ onLogin }: StaffLoginProps) {
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ type: "spring", delay: 0.1 }}
-            className="w-16 h-16 bg-[#22C55E] rounded-2xl mx-auto mb-4 flex items-center justify-center shadow-2xl shadow-green-500/30"
+            className="w-16 h-16 rounded-2xl mx-auto mb-4 overflow-hidden shadow-2xl shadow-black/30"
           >
-            <span className="text-white" style={{ fontSize: "24px", fontWeight: 800 }}>K</span>
+            <img src="/images/logo.png" alt="POS Batto" className="w-full h-full object-cover" />
           </motion.div>
-          <h1 className="text-white mb-1" style={{ fontSize: "24px", fontWeight: 700 }}>Kafe Sans</h1>
+          <h1 className="text-white mb-1" style={{ fontSize: "24px", fontWeight: 700 }}>POS Batto</h1>
           <p className="text-gray-400" style={{ fontSize: "13px" }}>{timeStr} &bull; {dateStr}</p>
         </div>
 
@@ -309,13 +310,12 @@ export function StaffLogin({ onLogin }: StaffLoginProps) {
                       key={i}
                       animate={error ? { x: [0, -6, 6, -6, 6, 0] } : {}}
                       transition={{ duration: 0.4 }}
-                      className={`w-4 h-4 rounded-full transition-all ${
-                        i < pin.length
+                      className={`w-4 h-4 rounded-full transition-all ${i < pin.length
                           ? error
                             ? "bg-red-500 scale-110"
                             : "bg-[#22C55E] scale-110"
                           : "bg-white/10 border border-white/20"
-                      }`}
+                        }`}
                     />
                   ))}
                 </div>
@@ -371,6 +371,19 @@ export function StaffLogin({ onLogin }: StaffLoginProps) {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {onBackToWebsite && (
+          <p className="text-center mt-6">
+            <button
+              type="button"
+              onClick={onBackToWebsite}
+              className="text-gray-400 hover:text-white underline transition-colors"
+              style={{ fontSize: "13px" }}
+            >
+              {lang === "km" ? "← ត្រឡប់ទៅគេហទំព័រ" : "← Back to website"}
+            </button>
+          </p>
+        )}
       </motion.div>
     </div>
   );

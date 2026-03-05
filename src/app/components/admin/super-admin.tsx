@@ -22,16 +22,7 @@ interface Restaurant {
   monthlyRevenue: number;
 }
 
-const mockRestaurants: Restaurant[] = [
-  { id: "1", name: "Kafe Mekong", owner: "Sokha Chan", phone: "012345678", email: "sokha@kafe.com", plan: "pro", status: "active", registeredAt: "2025-12-01", trialEnds: "2025-12-15", lastActive: "2026-03-04", staffCount: 8, totalOrders: 1240, monthlyRevenue: 4200 },
-  { id: "2", name: "Bayon Bistro", owner: "Dara Pich", phone: "098765432", email: "dara@bayon.com", plan: "enterprise", status: "active", registeredAt: "2025-11-15", trialEnds: "2025-11-29", lastActive: "2026-03-04", staffCount: 15, totalOrders: 3800, monthlyRevenue: 12500 },
-  { id: "3", name: "Angkor Eats", owner: "Veasna Kem", phone: "077112233", email: "veasna@angkor.com", plan: "basic", status: "trial", registeredAt: "2026-02-25", trialEnds: "2026-03-11", lastActive: "2026-03-03", staffCount: 3, totalOrders: 45, monthlyRevenue: 320 },
-  { id: "4", name: "Phnom Penh Grill", owner: "Bopha Meas", phone: "085334455", email: "bopha@ppgrill.com", plan: "pro", status: "active", registeredAt: "2026-01-10", trialEnds: "2026-01-24", lastActive: "2026-03-04", staffCount: 6, totalOrders: 890, monthlyRevenue: 3100 },
-  { id: "5", name: "Lotus Kitchen", owner: "Rattana Sok", phone: "069778899", email: "rattana@lotus.com", plan: "basic", status: "expired", registeredAt: "2025-10-20", trialEnds: "2025-11-03", lastActive: "2026-01-15", staffCount: 2, totalOrders: 120, monthlyRevenue: 0 },
-  { id: "6", name: "Siem Reap Cafe", owner: "Chanthou Ly", phone: "016223344", email: "chanthou@srcafe.com", plan: "pro", status: "trial", registeredAt: "2026-02-28", trialEnds: "2026-03-14", lastActive: "2026-03-04", staffCount: 4, totalOrders: 22, monthlyRevenue: 180 },
-  { id: "7", name: "Golden Rice", owner: "Piseth Tep", phone: "078556677", email: "piseth@golden.com", plan: "enterprise", status: "active", registeredAt: "2025-09-01", trialEnds: "2025-09-15", lastActive: "2026-03-04", staffCount: 22, totalOrders: 5200, monthlyRevenue: 18900 },
-  { id: "8", name: "Kampot Pepper", owner: "Sreymom Ouk", phone: "011889900", email: "sreymom@kampot.com", plan: "basic", status: "suspended", registeredAt: "2025-12-10", trialEnds: "2025-12-24", lastActive: "2026-02-01", staffCount: 2, totalOrders: 67, monthlyRevenue: 0 },
-];
+const mockRestaurants: Restaurant[] = [];
 
 const planColors: Record<string, string> = {
   basic: "#6B7280",

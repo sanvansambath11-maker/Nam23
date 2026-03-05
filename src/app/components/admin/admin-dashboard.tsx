@@ -1,5 +1,6 @@
 import { useTranslation } from "../translation-context";
 import { useCurrency } from "../currency-context";
+import { useState, useEffect } from "react";
 import {
   DollarSign,
   ShoppingBag,
@@ -9,91 +10,258 @@ import {
   Clock,
   ArrowUpRight,
   ArrowDownRight,
+  Loader2,
+  CreditCard,
+  CheckCircle,
+  XCircle,
+  Ban,
 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
+import { getDashboardStats, getOrders } from "../../../lib/db-service";
+import { isSupabaseConfigured } from "../../../lib/supabase";
+import { getLocalOrders, getLocalDashboardStats } from "../../../lib/local-orders";
 
-const weeklyRevenue = [
-  { day: "Mon", revenue: 320, orders: 45 },
-  { day: "Tue", revenue: 480, orders: 62 },
-  { day: "Wed", revenue: 370, orders: 50 },
-  { day: "Thu", revenue: 580, orders: 78 },
-  { day: "Fri", revenue: 740, orders: 95 },
-  { day: "Sat", revenue: 850, orders: 110 },
-  { day: "Sun", revenue: 690, orders: 88 },
-];
+interface PaidOrderRow {
+  id: number;
+  order_number: string;
+  total: number;
+  payment_method: string | null;
+  created_at: string;
+}
 
-const hourlyOrders = [
-  { hour: "8AM", orders: 5 },
-  { hour: "9AM", orders: 12 },
-  { hour: "10AM", orders: 8 },
-  { hour: "11AM", orders: 25 },
-  { hour: "12PM", orders: 42 },
-  { hour: "1PM", orders: 38 },
-  { hour: "2PM", orders: 18 },
-  { hour: "3PM", orders: 10 },
-  { hour: "4PM", orders: 8 },
-  { hour: "5PM", orders: 15 },
-  { hour: "6PM", orders: 35 },
-  { hour: "7PM", orders: 45 },
-  { hour: "8PM", orders: 30 },
-  { hour: "9PM", orders: 12 },
-];
+interface DashboardData {
+  todayRevenue: number;
+  todayOrders: number;
+  totalCustomers: number;
+  avgOrder: number;
+  weeklyRevenue: { day: string; revenue: number; orders: number }[];
+  hourlyOrders: { hour: string; orders: number }[];
+  topItems: { name: string; sold: number; revenue: number }[];
+  recentActivity: { action: string; detail: string; time: string; type: string }[];
+  paidPayments: PaidOrderRow[];
+  cancelledOrders: PaidOrderRow[];
+}
 
-const recentActivity = [
-  { action: "New order #1052", detail: "Table 5 - $24.50", time: "2 min ago", type: "order" },
-  { action: "Payment received", detail: "Order #1049 - Cash $18.00", time: "8 min ago", type: "payment" },
-  { action: "Staff clock-in", detail: "Dara Pich - Cashier", time: "15 min ago", type: "staff" },
-  { action: "Menu item updated", detail: "Lok Lak - Price changed", time: "1 hr ago", type: "menu" },
-  { action: "New order #1051", detail: "Grab - $12.50", time: "1 hr ago", type: "order" },
-  { action: "Table reserved", detail: "Table 8 - 7:00 PM", time: "2 hr ago", type: "reservation" },
-];
+const defaultData: DashboardData = {
+  todayRevenue: 0,
+  todayOrders: 0,
+  totalCustomers: 0,
+  avgOrder: 0,
+  weeklyRevenue: [
+    { day: "Mon", revenue: 0, orders: 0 },
+    { day: "Tue", revenue: 0, orders: 0 },
+    { day: "Wed", revenue: 0, orders: 0 },
+    { day: "Thu", revenue: 0, orders: 0 },
+    { day: "Fri", revenue: 0, orders: 0 },
+    { day: "Sat", revenue: 0, orders: 0 },
+    { day: "Sun", revenue: 0, orders: 0 },
+  ],
+  hourlyOrders: [
+    { hour: "8AM", orders: 0 }, { hour: "9AM", orders: 0 }, { hour: "10AM", orders: 0 },
+    { hour: "11AM", orders: 0 }, { hour: "12PM", orders: 0 }, { hour: "1PM", orders: 0 },
+    { hour: "2PM", orders: 0 }, { hour: "3PM", orders: 0 }, { hour: "4PM", orders: 0 },
+    { hour: "5PM", orders: 0 }, { hour: "6PM", orders: 0 }, { hour: "7PM", orders: 0 },
+    { hour: "8PM", orders: 0 }, { hour: "9PM", orders: 0 },
+  ],
+  topItems: [],
+  recentActivity: [],
+  paidPayments: [],
+  cancelledOrders: [],
+};
+
+const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const hourLabels = ["8AM", "9AM", "10AM", "11AM", "12PM", "1PM", "2PM", "3PM", "4PM", "5PM", "6PM", "7PM", "8PM", "9PM"];
+
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hr ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
 
 export function AdminDashboard() {
   const { lang, fontClass } = useTranslation();
   const { formatPrice } = useCurrency();
+  const [data, setData] = useState<DashboardData>(defaultData);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        // Use only local orders - starts from zero with real POS data
+        const localStats = getLocalDashboardStats();
+        const localOrders = getLocalOrders(200);
+
+        const statsResult = localStats;
+        const recentOrders = localOrders;
+
+        const todayRevenue = statsResult?.todayRevenue ?? 0;
+        const todayOrders = statsResult?.todayOrders ?? 0;
+        const totalCustomers = statsResult?.totalCustomers ?? 0;
+        const avgOrder = todayOrders > 0 ? todayRevenue / todayOrders : 0;
+
+        // Build weekly revenue from orders (last 7 days)
+        const weeklyMap: Record<string, { revenue: number; orders: number }> = {};
+        dayNames.forEach((d) => { weeklyMap[d] = { revenue: 0, orders: 0 }; });
+        const now = new Date();
+        recentOrders.forEach((order) => {
+          const orderDate = new Date(order.created_at);
+          const daysDiff = Math.floor((now.getTime() - orderDate.getTime()) / 86400000);
+          if (daysDiff < 7) {
+            const dayName = dayNames[orderDate.getDay()];
+            weeklyMap[dayName].revenue += Number(order.total);
+            weeklyMap[dayName].orders += 1;
+          }
+        });
+        const weeklyRevenue = dayNames.slice(1).concat(dayNames[0]).map((day) => ({
+          day,
+          revenue: Math.round(weeklyMap[day].revenue * 100) / 100,
+          orders: weeklyMap[day].orders,
+        }));
+
+        // Build hourly orders for today
+        const hourlyMap: Record<string, number> = {};
+        hourLabels.forEach((h) => { hourlyMap[h] = 0; });
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        recentOrders.forEach((order) => {
+          const orderDate = new Date(order.created_at);
+          if (orderDate >= todayStart) {
+            const hr = orderDate.getHours();
+            if (hr >= 8 && hr <= 21) {
+              const idx = hr - 8;
+              if (idx < hourLabels.length) {
+                hourlyMap[hourLabels[idx]] += 1;
+              }
+            }
+          }
+        });
+        const hourlyOrders = hourLabels.map((hour) => ({ hour, orders: hourlyMap[hour] }));
+
+        // Build top selling items from recent orders
+        const itemMap: Record<string, { sold: number; revenue: number }> = {};
+        recentOrders.forEach((order) => {
+          const items = order.items as unknown as { name: string; price: number; qty: number }[];
+          if (Array.isArray(items)) {
+            items.forEach((item) => {
+              if (!itemMap[item.name]) itemMap[item.name] = { sold: 0, revenue: 0 };
+              itemMap[item.name].sold += item.qty || 1;
+              itemMap[item.name].revenue += (item.price || 0) * (item.qty || 1);
+            });
+          }
+        });
+        const topItems = Object.entries(itemMap)
+          .map(([name, data]) => ({ name, ...data }))
+          .sort((a, b) => b.sold - a.sold)
+          .slice(0, 5);
+
+        // Build recent activity from recent orders
+        const recentActivity = recentOrders.slice(0, 6).map((order) => ({
+          action: `${lang === "km" ? "បញ្ជាថ្មី" : "New order"} #${order.order_number}`,
+          detail: `${formatPrice(Number(order.total))} - ${order.payment_method ?? "cash"}`,
+          time: timeAgo(order.created_at),
+          type: "order",
+        }));
+
+        // Paid payments: orders with status "served" (completed payment)
+        const paidPayments: PaidOrderRow[] = recentOrders
+          .filter((o) => o.status === "served")
+          .slice(0, 50)
+          .map((o) => ({
+            id: o.id,
+            order_number: o.order_number,
+            total: Number(o.total),
+            payment_method: o.payment_method ?? null,
+            created_at: o.created_at,
+          }));
+
+        // Cancelled orders
+        const cancelledOrders: PaidOrderRow[] = recentOrders
+          .filter((o) => o.status === "cancelled")
+          .slice(0, 50)
+          .map((o) => ({
+            id: o.id,
+            order_number: o.order_number,
+            total: Number(o.total),
+            payment_method: o.payment_method ?? null,
+            created_at: o.created_at,
+          }));
+
+        setData({
+          todayRevenue,
+          todayOrders,
+          totalCustomers,
+          avgOrder,
+          weeklyRevenue,
+          hourlyOrders,
+          topItems,
+          recentActivity,
+          paidPayments,
+          cancelledOrders,
+        });
+      } catch (err) {
+        console.error("Failed to fetch dashboard data:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchData();
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchData, 30000);
+    return () => clearInterval(interval);
+  }, [formatPrice, lang]);
 
   const stats = [
     {
       label: lang === "km" ? "ចំណូលថ្ងៃនេះ" : "Today's Revenue",
-      value: formatPrice(2050),
-      change: "+12.5%",
+      value: formatPrice(data.todayRevenue),
+      change: data.todayOrders > 0 ? `${data.todayOrders} orders` : "0%",
       up: true,
       icon: <DollarSign size={20} />,
       color: "#22C55E",
     },
     {
       label: lang === "km" ? "ការបញ្ជា" : "Orders Today",
-      value: "84",
-      change: "+8.3%",
-      up: true,
+      value: String(data.todayOrders),
+      change: data.todayOrders > 0 ? "Active" : "0%",
+      up: data.todayOrders > 0,
       icon: <ShoppingBag size={20} />,
       color: "#3B82F6",
     },
     {
       label: lang === "km" ? "អតិថិជន" : "Customers",
-      value: "56",
-      change: "-2.1%",
-      up: false,
+      value: String(data.totalCustomers),
+      change: "0%",
+      up: true,
       icon: <Users size={20} />,
       color: "#A855F7",
     },
     {
       label: lang === "km" ? "មធ្យមបញ្ជា" : "Avg Order",
-      value: formatPrice(24.4),
-      change: "+5.7%",
-      up: true,
+      value: formatPrice(data.avgOrder),
+      change: data.avgOrder > 0 ? "Active" : "0%",
+      up: data.avgOrder > 0,
       icon: <TrendingUp size={20} />,
       color: "#F59E0B",
     },
   ];
 
-  const topItems = [
-    { name: "Lok Lak", sold: 28, revenue: 154 },
-    { name: "Fish Amok", sold: 22, revenue: 132 },
-    { name: "Kuy Teav", sold: 19, revenue: 66.5 },
-    { name: "Bai Sach Chrouk", sold: 17, revenue: 59.5 },
-    { name: "Sugarcane Juice", sold: 35, revenue: 52.5 },
-  ];
+  if (loading) {
+    return (
+      <div className={`p-6 flex items-center justify-center min-h-[400px] ${fontClass}`}>
+        <div className="text-center">
+          <Loader2 size={32} className="text-[#22C55E] animate-spin mx-auto mb-3" />
+          <p className="text-gray-400" style={{ fontSize: "13px" }}>
+            {lang === "km" ? "កំពុងផ្ទុកទិន្នន័យ..." : "Loading dashboard data..."}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`p-6 space-y-6 ${fontClass}`}>
@@ -112,11 +280,10 @@ export function AdminDashboard() {
                 {stat.icon}
               </div>
               <div
-                className={`flex items-center gap-0.5 px-2 py-1 rounded-lg ${
-                  stat.up
-                    ? "bg-green-50 dark:bg-green-900/20 text-green-600"
-                    : "bg-red-50 dark:bg-red-900/20 text-red-500"
-                }`}
+                className={`flex items-center gap-0.5 px-2 py-1 rounded-lg ${stat.up
+                  ? "bg-green-50 dark:bg-green-900/20 text-green-600"
+                  : "bg-red-50 dark:bg-red-900/20 text-red-500"
+                  }`}
                 style={{ fontSize: "11px", fontWeight: 600 }}
               >
                 {stat.up ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
@@ -146,7 +313,7 @@ export function AdminDashboard() {
             </span>
           </div>
           <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={weeklyRevenue}>
+            <BarChart data={data.weeklyRevenue}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
               <XAxis dataKey="day" tick={{ fontSize: 12 }} />
               <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `$${v}`} />
@@ -165,7 +332,7 @@ export function AdminDashboard() {
             </p>
           </div>
           <ResponsiveContainer width="100%" height={240}>
-            <LineChart data={hourlyOrders}>
+            <LineChart data={data.hourlyOrders}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
               <XAxis dataKey="hour" tick={{ fontSize: 10 }} interval={1} />
               <YAxis tick={{ fontSize: 11 }} />
@@ -187,18 +354,21 @@ export function AdminDashboard() {
             </p>
           </div>
           <div className="space-y-3">
-            {topItems.map((item, i) => (
+            {data.topItems.length === 0 ? (
+              <p className="text-gray-400 text-center py-6" style={{ fontSize: "13px" }}>
+                {lang === "km" ? "មិនទាន់មានទិន្នន័យនៅឡើយទេ" : "No sales data yet"}
+              </p>
+            ) : data.topItems.map((item, i) => (
               <div key={item.name} className="flex items-center gap-3">
                 <span
-                  className={`w-6 h-6 rounded-full flex items-center justify-center text-white shrink-0 ${
-                    i === 0
-                      ? "bg-yellow-400"
-                      : i === 1
-                        ? "bg-gray-400"
-                        : i === 2
-                          ? "bg-amber-600"
-                          : "bg-gray-200 dark:bg-gray-700 !text-gray-500"
-                  }`}
+                  className={`w-6 h-6 rounded-full flex items-center justify-center text-white shrink-0 ${i === 0
+                    ? "bg-yellow-400"
+                    : i === 1
+                      ? "bg-gray-400"
+                      : i === 2
+                        ? "bg-amber-600"
+                        : "bg-gray-200 dark:bg-gray-700 !text-gray-500"
+                    }`}
                   style={{ fontSize: "11px", fontWeight: 700 }}
                 >
                   {i + 1}
@@ -223,20 +393,23 @@ export function AdminDashboard() {
             {lang === "km" ? "សកម្មភាពថ្មីៗ" : "Recent Activity"}
           </p>
           <div className="space-y-3">
-            {recentActivity.map((a, i) => (
+            {data.recentActivity.length === 0 ? (
+              <p className="text-gray-400 text-center py-6" style={{ fontSize: "13px" }}>
+                {lang === "km" ? "មិនទាន់មានសកម្មភាពនៅឡើយទេ" : "No activity yet"}
+              </p>
+            ) : data.recentActivity.map((a, i) => (
               <div key={i} className="flex items-start gap-3">
                 <div
-                  className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${
-                    a.type === "order"
-                      ? "bg-blue-400"
-                      : a.type === "payment"
-                        ? "bg-green-400"
-                        : a.type === "staff"
-                          ? "bg-purple-400"
-                          : a.type === "menu"
-                            ? "bg-yellow-400"
-                            : "bg-gray-400"
-                  }`}
+                  className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${a.type === "order"
+                    ? "bg-blue-400"
+                    : a.type === "payment"
+                      ? "bg-green-400"
+                      : a.type === "staff"
+                        ? "bg-purple-400"
+                        : a.type === "menu"
+                          ? "bg-yellow-400"
+                          : "bg-gray-400"
+                    }`}
                 />
                 <div className="flex-1 min-w-0">
                   <p className="text-gray-700 dark:text-gray-300" style={{ fontSize: "13px", fontWeight: 500 }}>
@@ -254,6 +427,127 @@ export function AdminDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Paid Payments – show data to admin when payment is completed */}
+      <div className="bg-white dark:bg-gray-900 rounded-2xl p-5 border border-gray-100 dark:border-gray-800">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: "#22C55E12", color: "#22C55E" }}>
+            <CreditCard size={20} />
+          </div>
+          <div>
+            <p className="text-gray-900 dark:text-white" style={{ fontSize: "15px", fontWeight: 600 }}>
+              {lang === "km" ? "ការទូទាត់រួចរាល់" : "Paid Payments"}
+            </p>
+            <p className="text-gray-400" style={{ fontSize: "12px" }}>
+              {lang === "km" ? "បញ្ជីប្រតិបត្តិការបង់ប្រាក់ដែលបានទូទាត់" : "Completed payment transactions visible to admin"}
+            </p>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          {data.paidPayments.length === 0 ? (
+            <p className="text-gray-400 text-center py-8" style={{ fontSize: "13px" }}>
+              {lang === "km" ? "មិនទាន់មានការទូទាត់រួចរាល់នៅឡើយទេ" : "No paid payments yet"}
+            </p>
+          ) : (
+            <table className="w-full" style={{ fontSize: "13px" }}>
+              <thead>
+                <tr className="text-left border-b border-gray-100 dark:border-gray-800">
+                  <th className="pb-3 pr-4 text-gray-500 dark:text-gray-400 font-medium">{lang === "km" ? "ល.រ" : "#"}</th>
+                  <th className="pb-3 pr-4 text-gray-500 dark:text-gray-400 font-medium">{lang === "km" ? "លេខបញ្ជា" : "Order"}</th>
+                  <th className="pb-3 pr-4 text-gray-500 dark:text-gray-400 font-medium">{lang === "km" ? "ចំនួន" : "Amount"}</th>
+                  <th className="pb-3 pr-4 text-gray-500 dark:text-gray-400 font-medium">{lang === "km" ? "វិធីបង់" : "Method"}</th>
+                  <th className="pb-3 text-gray-500 dark:text-gray-400 font-medium">{lang === "km" ? "ថ្ងៃធ្វើ" : "Date"}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.paidPayments.map((pay, idx) => (
+                  <tr key={pay.id} className="border-b border-gray-50 dark:border-gray-800/50 hover:bg-gray-50/50 dark:hover:bg-gray-800/30">
+                    <td className="py-3 pr-4 text-gray-400">{idx + 1}</td>
+                    <td className="py-3 pr-4">
+                      <span className="text-gray-900 dark:text-white font-medium">{pay.order_number}</span>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <span className="text-[#22C55E] font-semibold">{formatPrice(pay.total)}</span>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <span className="inline-flex items-center gap-1 text-gray-600 dark:text-gray-300">
+                        <CheckCircle size={12} className="text-[#22C55E]" />
+                        {pay.payment_method || "cash"}
+                      </span>
+                    </td>
+                    <td className="py-3 text-gray-500 dark:text-gray-400">
+                      {new Date(pay.created_at).toLocaleString(lang === "km" ? "km-KH" : "en-US", {
+                        dateStyle: "short",
+                        timeStyle: "short",
+                      })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      {/* Cancelled Orders – visible to admin */}
+      {data.cancelledOrders.length > 0 && (
+        <div className="bg-white dark:bg-gray-900 rounded-2xl p-5 border border-red-100 dark:border-red-900/30">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: "#EF444415", color: "#EF4444" }}>
+              <Ban size={20} />
+            </div>
+            <div>
+              <p className="text-gray-900 dark:text-white" style={{ fontSize: "15px", fontWeight: 600 }}>
+                {lang === "km" ? "បញ្ជាដែលបានបោះបង់" : "Cancelled Orders"}
+              </p>
+              <p className="text-gray-400" style={{ fontSize: "12px" }}>
+                {lang === "km" ? "បញ្ជីបញ្ជាដែលបុគ្គលិកបានបោះបង់" : "Orders voided by staff"}
+              </p>
+            </div>
+            <span className="ml-auto px-2.5 py-1 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-lg" style={{ fontSize: "12px", fontWeight: 600 }}>
+              {data.cancelledOrders.length}
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full" style={{ fontSize: "13px" }}>
+              <thead>
+                <tr className="text-left border-b border-red-100 dark:border-red-900/30">
+                  <th className="pb-3 pr-4 text-gray-500 dark:text-gray-400 font-medium">{lang === "km" ? "ល.រ" : "#"}</th>
+                  <th className="pb-3 pr-4 text-gray-500 dark:text-gray-400 font-medium">{lang === "km" ? "លេខបញ្ជា" : "Order"}</th>
+                  <th className="pb-3 pr-4 text-gray-500 dark:text-gray-400 font-medium">{lang === "km" ? "ចំនួន" : "Amount"}</th>
+                  <th className="pb-3 pr-4 text-gray-500 dark:text-gray-400 font-medium">{lang === "km" ? "ស្ថានភាព" : "Status"}</th>
+                  <th className="pb-3 text-gray-500 dark:text-gray-400 font-medium">{lang === "km" ? "ថ្ងៃធ្វើ" : "Date"}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.cancelledOrders.map((co, idx) => (
+                  <tr key={co.id} className="border-b border-gray-50 dark:border-gray-800/50 hover:bg-red-50/30 dark:hover:bg-red-900/10">
+                    <td className="py-3 pr-4 text-gray-400">{idx + 1}</td>
+                    <td className="py-3 pr-4">
+                      <span className="text-gray-900 dark:text-white font-medium">{co.order_number}</span>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <span className="text-red-500 font-semibold line-through">{formatPrice(co.total)}</span>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-lg" style={{ fontSize: "11px", fontWeight: 600 }}>
+                        <XCircle size={12} />
+                        {lang === "km" ? "បោះបង់" : "Cancelled"}
+                      </span>
+                    </td>
+                    <td className="py-3 text-gray-500 dark:text-gray-400">
+                      {new Date(co.created_at).toLocaleString(lang === "km" ? "km-KH" : "en-US", {
+                        dateStyle: "short",
+                        timeStyle: "short",
+                      })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

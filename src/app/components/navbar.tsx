@@ -3,6 +3,9 @@ import { Search, Bell, ChevronDown, Moon, Sun, Globe, DollarSign, Clock, Trendin
 import { useTranslation } from "./translation-context";
 import { useTheme } from "./theme-context";
 import { useCurrency } from "./currency-context";
+import { getDashboardStats } from "../../lib/db-service";
+import { isSupabaseConfigured } from "../../lib/supabase";
+import { getLocalDashboardStats } from "../../lib/local-orders";
 
 interface NavbarProps {
   activeTab: string;
@@ -28,23 +31,34 @@ export function Navbar({ activeTab, onTabChange, searchQuery, onSearchChange, st
   const { currency, setCurrency, formatPrice } = useCurrency();
 
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [todayRevenue, setTodayRevenue] = useState(0);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
+  // Fetch live revenue from local orders only
+  useEffect(() => {
+    function fetchRevenue() {
+      try {
+        const localStats = getLocalDashboardStats();
+        setTodayRevenue(localStats.todayRevenue);
+      } catch { /* ignore */ }
+    }
+    fetchRevenue();
+    const interval = setInterval(fetchRevenue, 5000); // Refresh every 5s
+    return () => clearInterval(interval);
+  }, []);
+
   const timeStr = currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true });
-  const todayRevenue = 2050; // Mock today's revenue
 
   return (
     <div className={`bg-white dark:bg-gray-900 px-4 py-3 flex items-center gap-3 border-b border-gray-100 dark:border-gray-800 ${fontClass}`}>
       {/* Logo */}
       <div className="flex items-center gap-2 shrink-0">
-        <div className="w-8 h-8 bg-[#22C55E] rounded-lg flex items-center justify-center">
-          <span className="text-white" style={{ fontSize: "14px", fontWeight: 700 }}>K</span>
-        </div>
-        <span style={{ fontSize: "16px", fontWeight: 700 }} className="text-gray-900 dark:text-white hidden sm:block">Kafe Sans</span>
+        <img src="/images/logo.png" alt="POS Batto" className="w-8 h-8 rounded-lg object-cover" />
+        <span style={{ fontSize: "16px", fontWeight: 700 }} className="text-gray-900 dark:text-white hidden sm:block">POS Batto</span>
       </div>
 
       {/* Live Clock + Revenue ticker */}
@@ -81,11 +95,10 @@ export function Navbar({ activeTab, onTabChange, searchQuery, onSearchChange, st
           <button
             key={key}
             onClick={() => onTabChange(key)}
-            className={`px-3 py-2 rounded-lg transition-all whitespace-nowrap ${
-              activeTab === key
-                ? "text-[#22C55E] bg-green-50 dark:bg-green-900/30"
-                : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
-            }`}
+            className={`px-3 py-2 rounded-lg transition-all whitespace-nowrap ${activeTab === key
+              ? "text-[#22C55E] bg-green-50 dark:bg-green-900/30"
+              : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"
+              }`}
             style={{ fontSize: "12px", fontWeight: activeTab === key ? 600 : 500, position: "relative" }}
           >
             {t(key)}
