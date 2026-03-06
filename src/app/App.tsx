@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { Toaster, toast } from "sonner";
+import { Search } from "lucide-react";
 import { TranslationProvider, useTranslation } from "./components/translation-context";
 import { ThemeProvider } from "./components/theme-context";
 import { CurrencyProvider } from "./components/currency-context";
@@ -98,7 +99,7 @@ function POSDashboard({ onBackToWebsite }: { onBackToWebsite?: () => void }) {
     toast.info("Item removed", { duration: 1000 });
   }, []);
 
-  const handlePaymentSuccess = async (paymentMethod: string) => {
+  const handlePaymentSuccess = async (paymentMethod: string, customerId?: number, earnedPoints?: number, usedPoints?: number) => {
     const itemCount = orderItems.reduce((s, i) => s + i.quantity, 0);
     const orderNumber = nextInvoiceNumber();
     const restaurantName = (() => {
@@ -111,6 +112,9 @@ function POSDashboard({ onBackToWebsite }: { onBackToWebsite?: () => void }) {
         return undefined;
       }
     })();
+
+    const finalDiscount = discount + (usedPoints ? usedPoints / 100 : 0);
+    const finalTotal = Math.max(0, subtotal + vat - finalDiscount);
 
     // Save order to Supabase
     if (isSupabaseConfigured()) {
@@ -131,8 +135,8 @@ function POSDashboard({ onBackToWebsite }: { onBackToWebsite?: () => void }) {
           items: orderItems.map(i => ({ name: i.name, price: i.price, qty: i.quantity, mods: i.modifications })) as unknown as never,
           subtotal: Number(subtotal.toFixed(2)),
           vat: Number(vat.toFixed(2)),
-          discount: Number(discount.toFixed(2)),
-          total: Number(total.toFixed(2)),
+          discount: Number(finalDiscount.toFixed(2)),
+          total: Number(finalTotal.toFixed(2)),
           payment_method: paymentMethod,
           status: "served",
           table_number: null,
@@ -151,21 +155,31 @@ function POSDashboard({ onBackToWebsite }: { onBackToWebsite?: () => void }) {
       items: orderItems.map(i => ({ name: i.name, price: i.price, qty: i.quantity, mods: i.modifications })),
       subtotal: Number(subtotal.toFixed(2)),
       vat: Number(vat.toFixed(2)),
-      discount: Number(discount.toFixed(2)),
-      total: Number(total.toFixed(2)),
+      discount: Number(finalDiscount.toFixed(2)),
+      total: Number(finalTotal.toFixed(2)),
       payment_method: paymentMethod,
-      status: "served",
+      status: "new",
       table_number: null,
       customer_name: null,
       staff_name: null,
     });
 
     notifyPaymentReceived({
-      total,
+      total: finalTotal,
       paymentMethod,
       itemCount,
       restaurantName,
     });
+
+    if (customerId) {
+      import("../lib/local-customers").then(({ recordCustomerVisit, addPoints }) => {
+        recordCustomerVisit(customerId, finalTotal, earnedPoints || 0);
+        if (usedPoints) {
+          addPoints(customerId, -usedPoints);
+        }
+      });
+    }
+
     setShowPayment(false);
     // Save items for invoice before clearing
     setInvoiceItems([...orderItems]);
@@ -253,7 +267,7 @@ function POSDashboard({ onBackToWebsite }: { onBackToWebsite?: () => void }) {
   const renderMainContent = () => {
     switch (activeTab) {
       case "kitchen":
-        return <KitchenView />;
+        return <KitchenView onExit={() => setActiveTab("menu")} />;
       case "tables":
         return <TableMapView />;
       case "analytics":
@@ -264,7 +278,23 @@ function POSDashboard({ onBackToWebsite }: { onBackToWebsite?: () => void }) {
       default:
         return (
           <div className="p-6">
-            <Categories activeCategory={activeCategory} onCategoryChange={setActiveCategory} />
+            <Categories
+              activeCategory={activeCategory}
+              onCategoryChange={setActiveCategory}
+              rightContent={
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                  <input
+                    type="text"
+                    placeholder={t("search")}
+                    value={searchQuery ?? ""}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 outline-none text-gray-600 dark:text-gray-300 shadow-sm"
+                    style={{ fontSize: "13px", minWidth: "250px" }}
+                  />
+                </div>
+              }
+            />
             <MenuGrid
               onAddItem={handleAddItem}
               searchQuery={searchQuery}
@@ -294,8 +324,6 @@ function POSDashboard({ onBackToWebsite }: { onBackToWebsite?: () => void }) {
       <Navbar
         activeTab={activeTab}
         onTabChange={handleTabChange}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
         staffName={user?.name}
         staffNameKm={user?.nameKm}
         staffRole={user?.role}

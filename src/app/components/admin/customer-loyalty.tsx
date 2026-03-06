@@ -1,22 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "../translation-context";
 import { useCurrency } from "../currency-context";
 import { Search, Plus, Edit2, Star, Crown, Award, Gift, X, Users, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
-
-interface Customer {
-  id: number;
-  name: string;
-  phone: string;
-  email: string;
-  points: number;
-  tier: "bronze" | "silver" | "gold" | "platinum";
-  visits: number;
-  totalSpent: number;
-  lastVisit: string;
-  joinDate: string;
-  notes: string;
-}
+import { Customer, loadCustomers, addCustomer, updateCustomer, addPoints } from "../../../lib/local-customers";
 
 const tierConfig: Record<Customer["tier"], { label: string; labelKm: string; color: string; minPoints: number; icon: React.ReactNode }> = {
   bronze: { label: "Bronze", labelKm: "រូបាំង", color: "#CD7F32", minPoints: 0, icon: <Award size={14} /> },
@@ -25,22 +12,18 @@ const tierConfig: Record<Customer["tier"], { label: string; labelKm: string; col
   platinum: { label: "Platinum", labelKm: "ផ្លាទីន", color: "#A855F7", minPoints: 1000, icon: <Star size={14} /> },
 };
 
-const initialCustomers: Customer[] = [
-  { id: 1, name: "Chanthy Sok", phone: "012 888 111", email: "chanthy@email.com", points: 1250, tier: "platinum", visits: 85, totalSpent: 1820, lastVisit: "2026-03-03", joinDate: "2025-06-15", notes: "Prefers table 3" },
-  { id: 2, name: "Rith Phan", phone: "012 888 222", email: "rith@email.com", points: 680, tier: "gold", visits: 48, totalSpent: 960, lastVisit: "2026-03-02", joinDate: "2025-08-20", notes: "Allergic to peanuts" },
-  { id: 3, name: "Sopheap Lim", phone: "012 888 333", email: "", points: 320, tier: "silver", visits: 22, totalSpent: 440, lastVisit: "2026-02-28", joinDate: "2025-10-10", notes: "" },
-  { id: 4, name: "Narith Chea", phone: "012 888 444", email: "narith@email.com", points: 150, tier: "bronze", visits: 10, totalSpent: 180, lastVisit: "2026-03-01", joinDate: "2026-01-05", notes: "Regular lunch customer" },
-  { id: 5, name: "Maly Oung", phone: "012 888 555", email: "", points: 890, tier: "gold", visits: 62, totalSpent: 1340, lastVisit: "2026-03-03", joinDate: "2025-07-01", notes: "Loves Lok Lak" },
-  { id: 6, name: "Vuthy Keo", phone: "012 888 666", email: "vuthy@email.com", points: 45, tier: "bronze", visits: 3, totalSpent: 55, lastVisit: "2026-02-25", joinDate: "2026-02-20", notes: "" },
-];
-
-let nextCustId = 20;
-
 export function CustomerLoyalty() {
   const { lang, fontClass } = useTranslation();
   const { formatPrice } = useCurrency();
   const l = (en: string, km: string) => (lang === "km" ? km : en);
-  const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+
+  useEffect(() => {
+    setCustomers(loadCustomers());
+    const handleUpdate = () => setCustomers(loadCustomers());
+    window.addEventListener("customers-updated", handleUpdate);
+    return () => window.removeEventListener("customers-updated", handleUpdate);
+  }, []);
   const [search, setSearch] = useState("");
   const [filterTier, setFilterTier] = useState<Customer["tier"] | "all">("all");
   const [showModal, setShowModal] = useState(false);
@@ -58,10 +41,10 @@ export function CustomerLoyalty() {
 
   const handleSave = (data: Customer) => {
     if (editCust) {
-      setCustomers((p) => p.map((c) => (c.id === data.id ? data : c)));
+      updateCustomer(data);
       toast.success(l("Customer updated", "បានកែប្រែអតិថិជន"));
     } else {
-      setCustomers((p) => [...p, { ...data, id: nextCustId++ }]);
+      addCustomer(data);
       toast.success(l("Customer added", "បានបន្ថែមអតិថិជន"));
     }
     setShowModal(false);
@@ -69,15 +52,7 @@ export function CustomerLoyalty() {
   };
 
   const handleAddPoints = (id: number, pts: number) => {
-    setCustomers((p) => p.map((c) => {
-      if (c.id !== id) return c;
-      const newPts = c.points + pts;
-      let tier: Customer["tier"] = "bronze";
-      if (newPts >= 1000) tier = "platinum";
-      else if (newPts >= 500) tier = "gold";
-      else if (newPts >= 200) tier = "silver";
-      return { ...c, points: newPts, tier };
-    }));
+    addPoints(id, pts);
     toast.success(`+${pts} ${l("points", "ពិន្ទុ")}`);
   };
 

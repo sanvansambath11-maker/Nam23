@@ -1,22 +1,5 @@
-# Dependencies
-node_modules/
-
-# Build
-dist/
-build/
-*.local
-
-# Environment (keep secrets out of repo)
+node_modules
+dist
 .env
 .env.local
 .env.*.local
-
-# IDE / OS
-.DS_Store
-Thumbs.db
-*.log
-.vscode/
-.idea/
-
-# Supabase
-supabase/.temp/

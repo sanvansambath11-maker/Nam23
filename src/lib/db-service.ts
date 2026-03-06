@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from "./supabase";
 import type { Tables, InsertTables, UpdateTables } from "./database.types";
+import { createLowStockTask } from "./clickup-service";
 
 type MenuItem = Tables<"menu_items">;
 type Order = Tables<"orders">;
@@ -181,7 +182,14 @@ export async function updateInventoryItem(id: number, updates: UpdateTables<"inv
     .select()
     .single();
   if (error) throw error;
-  return data;
+
+  const inventoryItem = data as InventoryItem;
+
+  if (updates.quantity !== undefined && inventoryItem.quantity <= 5) {
+    createLowStockTask(inventoryItem.name, inventoryItem.quantity).catch(console.error);
+  }
+
+  return inventoryItem;
 }
 
 export async function deleteInventoryItem(id: number) {

@@ -116,13 +116,13 @@ function loadTelegramFromStorage(): Partial<RestaurantSettings> {
       telegramChatId: data.chatId || "",
       telegramAlerts: data.alerts
         ? {
-            newOrder: data.alerts.newOrder !== false,
-            lowStock: data.alerts.lowStock !== false,
-            dailySummary: data.alerts.dailySummary !== false,
-            staffClock: !!data.alerts.staffClock,
-            paymentReceived: data.alerts.paymentReceived !== false,
-            orderVoid: data.alerts.orderVoid !== false,
-          }
+          newOrder: data.alerts.newOrder !== false,
+          lowStock: data.alerts.lowStock !== false,
+          dailySummary: data.alerts.dailySummary !== false,
+          staffClock: !!data.alerts.staffClock,
+          paymentReceived: data.alerts.paymentReceived !== false,
+          orderVoid: data.alerts.orderVoid !== false,
+        }
         : defaultSettings.telegramAlerts,
       telegramConnected: !!data.enabled && !!data.botToken && !!data.chatId,
     };
@@ -165,6 +165,15 @@ export function AdminSettings() {
       chatId: settings.telegramChatId,
       alerts: settings.telegramAlerts,
     });
+    // Persist restaurantName specifically so it's accessible across the app
+    try {
+      const u = localStorage.getItem("battoclub_user");
+      if (u) {
+        const j = JSON.parse(u);
+        j.restaurantName = settings.name;
+        localStorage.setItem("battoclub_user", JSON.stringify(j));
+      }
+    } catch { /* ignore */ }
     toast.success(lang === "km" ? "បានរក្សាទុកការកំណត់" : "Settings saved");
   };
 
@@ -232,8 +241,8 @@ export function AdminSettings() {
           onClick={handleSave}
           disabled={saved}
           className={`flex items-center gap-2 px-5 py-2.5 rounded-xl transition-all ${saved
-              ? "bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-default"
-              : "bg-[#22C55E] text-white hover:bg-green-600 shadow-md shadow-green-200 dark:shadow-green-900"
+            ? "bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-default"
+            : "bg-[#22C55E] text-white hover:bg-green-600 shadow-md shadow-green-200 dark:shadow-green-900"
             }`}
           style={{ fontSize: "13px", fontWeight: 600 }}
         >
@@ -384,8 +393,8 @@ export function AdminSettings() {
                     key={c}
                     onClick={() => update("currency", c)}
                     className={`flex-1 py-2.5 rounded-xl border transition-all ${settings.currency === c
-                        ? "border-[#22C55E] bg-[#22C55E]/5 text-[#22C55E]"
-                        : "border-gray-200 dark:border-gray-700 text-gray-500"
+                      ? "border-[#22C55E] bg-[#22C55E]/5 text-[#22C55E]"
+                      : "border-gray-200 dark:border-gray-700 text-gray-500"
                       }`}
                     style={{ fontSize: "13px", fontWeight: 600 }}
                   >
@@ -798,8 +807,8 @@ function TelegramSection({
                 onClick={handleTestConnection}
                 disabled={testing || !settings.telegramBotToken || !settings.telegramChatId}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all ${testing || !settings.telegramBotToken || !settings.telegramChatId
-                    ? "bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed"
-                    : "bg-blue-500 text-white hover:bg-blue-600 shadow-md shadow-blue-200 dark:shadow-blue-900"
+                  ? "bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed"
+                  : "bg-blue-500 text-white hover:bg-blue-600 shadow-md shadow-blue-200 dark:shadow-blue-900"
                   }`}
                 style={{ fontSize: "12px", fontWeight: 600 }}
               >

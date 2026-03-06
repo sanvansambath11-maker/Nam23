@@ -31,6 +31,7 @@ import {
   FileDown,
   Zap,
 } from "lucide-react";
+import { KitchenDisplaySystem } from "../kitchen-display";
 import { AdminDashboard } from "./admin-dashboard";
 import { StaffManagement } from "./staff-management";
 import { MenuManagement } from "./menu-management";
@@ -53,7 +54,7 @@ import { AdvancedAnalytics } from "./advanced-analytics";
 import { ExportReports } from "./export-reports";
 import { SmartAlerts } from "./smart-alerts";
 
-type AdminTab = "dashboard" | "staff" | "menuMgmt" | "inventory" | "customers" | "promotions" | "reports" | "shifts" | "notifications" | "auditLog" | "backup" | "roles" | "settings" | "superAdmin" | "qrOrdering" | "multiPayment" | "liveSales" | "thermalPrinter" | "advancedAnalytics" | "exportReports" | "smartAlerts";
+type AdminTab = "dashboard" | "kitchen" | "staff" | "menuMgmt" | "inventory" | "customers" | "promotions" | "reports" | "shifts" | "notifications" | "auditLog" | "backup" | "roles" | "settings" | "superAdmin" | "qrOrdering" | "multiPayment" | "liveSales" | "thermalPrinter" | "advancedAnalytics" | "exportReports" | "smartAlerts";
 
 interface AdminLayoutProps {
   onBackToPOS: () => void;
@@ -61,6 +62,7 @@ interface AdminLayoutProps {
 
 const sidebarItems: { key: AdminTab; icon: React.ReactNode; section?: string }[] = [
   { key: "dashboard", icon: <LayoutDashboard size={20} /> },
+  { key: "kitchen", icon: <UtensilsCrossed size={20} />, section: "pos" },
   { key: "liveSales", icon: <Activity size={20} /> },
   { key: "staff", icon: <Users size={20} />, section: "manage" },
   { key: "menuMgmt", icon: <UtensilsCrossed size={20} /> },
@@ -84,7 +86,8 @@ const sidebarItems: { key: AdminTab; icon: React.ReactNode; section?: string }[]
 ];
 
 const tabLabels: Record<AdminTab, { en: string; km: string }> = {
-  dashboard: { en: "Dashboard", km: "\u1795\u17D2\u1791\u17B6\u17C6\u1784\u1782\u17D2\u179A\u1794\u17CB\u1782\u17D2\u179A\u1784" },
+  dashboard: { en: "Dashboard", km: "ផ្ទាំងគ្រប់គ្រង" },
+  kitchen: { en: "Kitchen Display", km: "ផ្ទះបាយ" },
   liveSales: { en: "Live Sales", km: "ផ្សាយផ្ទាល់" },
   staff: { en: "Staff", km: "\u1794\u17BB\u1782\u17D2\u1782\u179B\u17B7\u1780" },
   menuMgmt: { en: "Menu", km: "\u1798\u17C9\u17BA\u1793\u17BB\u1799" },
@@ -122,6 +125,8 @@ export function AdminLayout({ onBackToPOS }: AdminLayoutProps) {
     switch (activeTab) {
       case "dashboard":
         return <AdminDashboard />;
+      case "kitchen":
+        return <KitchenDisplaySystem onBack={() => setActiveTab("dashboard")} />;
       case "liveSales":
         return <LiveSalesDashboard />;
       case "staff":

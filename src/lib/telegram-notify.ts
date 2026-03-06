@@ -90,6 +90,33 @@ export async function notifyNewOrder(payload: {
   await sendTelegramMessage(settings.botToken, settings.chatId, msg);
 }
 
+/** Call to send End of Day Z-Report */
+export async function notifyDailySummary(payload: {
+  totalRevenue: number;
+  totalOrders: number;
+  totalCustomers: number;
+  restaurantName?: string;
+  paymentBreakdown: { method: string; amount: number }[];
+}): Promise<void> {
+  const settings = getTelegramSettings();
+  if (!settings?.enabled || !settings.alerts.dailySummary) return;
+
+  const { totalRevenue, totalOrders, totalCustomers, restaurantName = "Restaurant", paymentBreakdown } = payload;
+  const time = new Date().toLocaleString();
+
+  let msg = `📊 *End of Day Z-Report*\n\n🍽️ ${restaurantName}\n🕐 ${time}\n\n`;
+  msg += `💵 *Total Revenue*: $${totalRevenue.toFixed(2)}\n`;
+  msg += `📦 *Total Orders*: ${totalOrders}\n`;
+  msg += `👥 *Customers*: ${totalCustomers}\n\n`;
+
+  msg += `💳 *Payment Breakdown*:\n`;
+  paymentBreakdown.forEach(p => {
+    msg += `• ${p.method.toUpperCase()}: $${p.amount.toFixed(2)}\n`;
+  });
+
+  await sendTelegramMessage(settings.botToken, settings.chatId, msg);
+}
+
 /** Persist Telegram config from Admin Settings so POS can use it. */
 export function saveTelegramSettings(settings: TelegramStoredSettings): void {
   try {

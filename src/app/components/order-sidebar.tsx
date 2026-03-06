@@ -159,7 +159,7 @@ export function OrderSidebar({ items, onUpdateQuantity, onRemoveItem, onPay, onS
         {/* Exchange rate info */}
         <div className="flex items-center justify-center gap-1 mb-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
           <span className="text-blue-500" style={{ fontSize: "10px", fontWeight: 500 }}>
-            {t("exchangeRate")}: $1 = 4,100\u17DB
+            {t("exchangeRate")}: $1 = 4,100៛
           </span>
         </div>
 

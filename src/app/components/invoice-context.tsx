@@ -53,7 +53,7 @@ interface InvoiceContextValue {
 const InvoiceContext = createContext<InvoiceContextValue | null>(null);
 
 // Persist invoice counter in localStorage to prevent duplicates across reloads
-const INVOICE_COUNTER_KEY = "kafesans_invoice_counter";
+const INVOICE_COUNTER_KEY = "battoclub_invoice_counter_v2";
 function getPersistedCounter(): number {
     try {
         const stored = localStorage.getItem(INVOICE_COUNTER_KEY);

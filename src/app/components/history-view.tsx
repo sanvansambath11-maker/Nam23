@@ -4,6 +4,7 @@ import { useCurrency } from "./currency-context";
 import { motion } from "motion/react";
 import { useState, useEffect } from "react";
 import { getLocalOrders } from "../../lib/local-orders";
+import { InvoiceModal } from "./invoice-modal";
 
 const platformColors: Record<string, string> = {
   grab: "#00B14F",
@@ -14,6 +15,7 @@ export function HistoryView() {
   const { t, lang, fontClass } = useTranslation();
   const { formatPrice, formatDual } = useCurrency();
   const [orders, setOrders] = useState<any[]>([]);
+  const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
 
   useEffect(() => {
     const load = () => {
@@ -55,6 +57,7 @@ export function HistoryView() {
             return (
               <motion.div
                 key={order.id || i}
+                onClick={() => setSelectedOrder(order)}
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.03 }}
@@ -104,6 +107,25 @@ export function HistoryView() {
           })
         )}
       </div>
+
+      {selectedOrder && (
+        <InvoiceModal
+          items={selectedOrder.items?.map((it: any) => ({
+            name: it.name,
+            price: it.price,
+            quantity: it.qty,
+            modifications: it.mods
+          })) || []}
+          paymentMethod={selectedOrder.payment_method}
+          onClose={() => setSelectedOrder(null)}
+          orderNumber={selectedOrder.order_number}
+          orderDate={selectedOrder.created_at}
+          overrideSubtotal={selectedOrder.subtotal}
+          overrideVat={selectedOrder.vat}
+          overrideDiscount={selectedOrder.discount}
+          overrideTotal={selectedOrder.total}
+        />
+      )}
     </div>
   );
 }

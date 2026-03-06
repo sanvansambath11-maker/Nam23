@@ -1,15 +1,16 @@
-import { X, Banknote, CreditCard, QrCode, CheckCircle, Smartphone, Send, Copy, Check, Clock, ExternalLink } from "lucide-react";
+import { X, Banknote, CreditCard, QrCode, CheckCircle, Smartphone, Send, Copy, Check, Clock, ExternalLink, Search, Gift, Users } from "lucide-react";
 import { useState, useEffect, useMemo } from "react";
 import { useTranslation } from "./translation-context";
 import { useCurrency } from "./currency-context";
 import { motion } from "motion/react";
 import { toast } from "sonner";
+import { Customer, loadCustomers } from "../../lib/local-customers";
 
 interface PaymentModalProps {
   total: number;
   items?: { name: string; price: number; quantity: number; modifications?: string[] }[];
   onClose: () => void;
-  onSuccess: (paymentMethod: string) => void;
+  onSuccess: (paymentMethod: string, customerId?: number, earnedPoints?: number, usedPoints?: number) => void;
 }
 
 type PayMethod = "cash" | "khqr" | "aba" | "acleda" | "wing" | "pipay" | "truemoney" | "bakong" | "card";
@@ -86,10 +87,37 @@ export function PaymentModal({ total, items, onClose, onSuccess }: PaymentModalP
   const [countdown, setCountdown] = useState(300);
   const [showFullForm, setShowFullForm] = useState(false);
 
-  const dual = formatDual(total);
-  const totalKHR = roundKHR(total * khrRate);
+  const [phoneSearch, setPhoneSearch] = useState("");
+  const [activeCustomer, setActiveCustomer] = useState<Customer | null>(null);
+  const [redeemPoints, setRedeemPoints] = useState(false);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+
+  useEffect(() => {
+    setCustomers(loadCustomers());
+  }, []);
+
+  const handleSearchCustomer = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setPhoneSearch(val);
+    if (val.length >= 8) {
+      const found = customers.find(c => c.phone.replace(/\s/g, '').includes(val.replace(/\s/g, '')));
+      if (found) setActiveCustomer(found);
+      else { setActiveCustomer(null); setRedeemPoints(false); }
+    } else {
+      setActiveCustomer(null);
+      setRedeemPoints(false);
+    }
+  };
+
+  const discountFromPoints = (redeemPoints && activeCustomer) ? Math.min(activeCustomer.points * 0.01, total) : 0;
+  const usedPoints = discountFromPoints * 100;
+  const finalTotal = Math.max(0, total - discountFromPoints);
+  const earnedPoints = Math.floor(finalTotal);
+
+  const dual = formatDual(finalTotal);
+  const totalKHR = roundKHR(finalTotal * khrRate);
   const cashNum = parseFloat(cashReceived) || 0;
-  const changeUSD = cashNum - total;
+  const changeUSD = cashNum - finalTotal;
   const changeKHR = roundKHR(changeUSD * khrRate);
 
   const isQRMethod = method === "khqr" || bankingApps.some((b) => b.key === method);
@@ -108,12 +136,12 @@ export function PaymentModal({ total, items, onClose, onSuccess }: PaymentModalP
     const params = new URLSearchParams({
       merchant: "POS_BATTO",
       currency: "USD",
-      amount: total.toFixed(2),
+      amount: finalTotal.toFixed(2),
       khr: totalKHR.toString(),
       ref: `ORD-${Date.now().toString(36).toUpperCase()}`,
     });
     return `${baseUrl}?${params.toString()}`;
-  }, [method, total, totalKHR]);
+  }, [method, finalTotal, totalKHR]);
 
   // QR code image
   const qrImage = useMemo(() => {
@@ -147,9 +175,9 @@ export function PaymentModal({ total, items, onClose, onSuccess }: PaymentModalP
 
   const handleConfirm = () => {
     setPaid(true);
-    toast.success(t("sentToTelegram"), { duration: 2000, icon: "??" });
+    toast.success(t("sentToTelegram"), { duration: 2000, icon: "✅" });
     setTimeout(() => {
-      onSuccess(method);
+      onSuccess(method, activeCustomer?.id, earnedPoints, usedPoints);
     }, 2000);
   };
 
@@ -161,7 +189,7 @@ export function PaymentModal({ total, items, onClose, onSuccess }: PaymentModalP
     setPaid(true);
     toast.success(lang === "km" ? "ការបង់ប្រាក់សាច់ប្រាក់បានបញ្ជាក់!" : "Cash payment confirmed!", { duration: 2000, icon: "✅" });
     setTimeout(() => {
-      onSuccess("cash");
+      onSuccess("cash", activeCustomer?.id, earnedPoints, usedPoints);
     }, 2000);
   };
 
@@ -170,7 +198,7 @@ export function PaymentModal({ total, items, onClose, onSuccess }: PaymentModalP
     setPaid(true);
     toast.success(lang === "km" ? "ការបង់ KHQR បានបញ្ជាក់!" : "KHQR payment confirmed!", { duration: 2000, icon: "✅" });
     setTimeout(() => {
-      onSuccess("khqr");
+      onSuccess("khqr", activeCustomer?.id, earnedPoints, usedPoints);
     }, 2000);
   };
 
@@ -220,9 +248,53 @@ export function PaymentModal({ total, items, onClose, onSuccess }: PaymentModalP
             </motion.div>
           ) : (
             <>
+              {/* Customer Loyalty Section */}
+              <div className="mb-4 text-left">
+                <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 focus-within:border-[#22C55E] transition-colors">
+                  <Search size={16} className="text-gray-400" />
+                  <input
+                    type="tel"
+                    placeholder={lang === "km" ? "ស្វែងរកលេខទូរសព្ទអតិថិជន..." : "Customer phone (optional)..."}
+                    value={phoneSearch}
+                    onChange={handleSearchCustomer}
+                    className="flex-1 bg-transparent border-none outline-none text-gray-900 dark:text-white"
+                    style={{ fontSize: "14px", fontWeight: 500 }}
+                  />
+                </div>
+                {activeCustomer && (
+                  <div className="mt-2 p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 rounded-xl flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-1">
+                        <Users size={14} className="text-purple-600 dark:text-purple-400" />
+                        <p className="text-purple-900 dark:text-purple-300 font-bold" style={{ fontSize: "14px" }}>
+                          {activeCustomer.name}
+                        </p>
+                      </div>
+                      <p className="text-purple-600/80 dark:text-purple-400/80" style={{ fontSize: "12px" }}>
+                        {activeCustomer.points} pts available (~${(activeCustomer.points * 0.01).toFixed(2)})
+                      </p>
+                    </div>
+                    {activeCustomer.points >= 10 && (
+                      <button
+                        onClick={() => setRedeemPoints(!redeemPoints)}
+                        className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors flex items-center gap-1 ${redeemPoints ? 'bg-purple-600 text-white' : 'bg-white text-purple-600 border border-purple-200'}`}
+                      >
+                        <Gift size={14} />
+                        {redeemPoints ? "Applied" : "Redeem"}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Total display with dual currency */}
               <div className="text-center mb-4 bg-gray-50 dark:bg-gray-800 rounded-xl p-4">
                 <p className="text-gray-400 mb-1" style={{ fontSize: "13px" }}>{t("total")}</p>
+                {discountFromPoints > 0 && (
+                  <p className="text-purple-500 mb-1 line-through" style={{ fontSize: "14px", fontWeight: 600 }}>
+                    {formatPrice(total)}
+                  </p>
+                )}
                 <p className="text-gray-900 dark:text-white" style={{ fontSize: "32px", fontWeight: 700 }}>{dual.usd}</p>
                 <p className="text-[#22C55E]" style={{ fontSize: "16px", fontWeight: 600 }}>{dual.khr}</p>
                 <p className="text-gray-400 mt-1" style={{ fontSize: "10px" }}>$1 = 4,100{"\u17DB"}</p>
@@ -237,7 +309,7 @@ export function PaymentModal({ total, items, onClose, onSuccess }: PaymentModalP
                   <div className="grid grid-cols-2 gap-2 mb-2">
                     {/* Pay Exact Cash */}
                     <button
-                      onClick={() => handleQuickCash(total)}
+                      onClick={() => handleQuickCash(finalTotal)}
                       className="py-3 bg-[#22C55E] text-white rounded-xl hover:bg-green-600 active:scale-[0.97] transition-all shadow-md shadow-green-200 dark:shadow-green-900 flex flex-col items-center gap-0.5"
                     >
                       <div className="flex items-center gap-1.5">
@@ -253,14 +325,14 @@ export function PaymentModal({ total, items, onClose, onSuccess }: PaymentModalP
                     >
                       <div className="flex items-center gap-1.5">
                         <QrCode size={16} />
-                        <span style={{ fontSize: "14px", fontWeight: 700 }}>KHQR ?</span>
+                        <span style={{ fontSize: "14px", fontWeight: 700 }}>KHQR</span>
                       </div>
-                      <span style={{ fontSize: "11px", fontWeight: 500, opacity: 0.9 }}>{lang === "km" ? "ស្កេនរួចហើយ" : "Already scanned"}</span>
+                      <span style={{ fontSize: "12px", fontWeight: 500, opacity: 0.9 }}>{lang === "km" ? "ស្កេនរួចហើយ" : "Scanned"}</span>
                     </button>
                   </div>
                   {/* Quick cash denominations */}
                   <div className="grid grid-cols-4 gap-1.5">
-                    {[1, 2, 5, 10, 20, 50, 100].filter(a => a >= total).slice(0, 4).map((amt) => (
+                    {[1, 2, 5, 10, 20, 50, 100].filter(a => a >= finalTotal).slice(0, 4).map((amt) => (
                       <button
                         key={amt}
                         onClick={() => handleQuickCash(amt)}
@@ -351,7 +423,7 @@ export function PaymentModal({ total, items, onClose, onSuccess }: PaymentModalP
                         className="w-full text-center bg-white dark:bg-gray-700 rounded-lg py-3 outline-none border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-white"
                         style={{ fontSize: "24px", fontWeight: 700 }}
                       />
-                      {cashNum > total && (
+                      {cashNum >= finalTotal && (
                         <div className="mt-3 text-center">
                           <p className="text-gray-500" style={{ fontSize: "11px" }}>{t("change")}</p>
                           <p className="text-[#22C55E]" style={{ fontSize: "20px", fontWeight: 700 }}>${changeUSD.toFixed(2)}</p>
@@ -490,14 +562,14 @@ export function PaymentModal({ total, items, onClose, onSuccess }: PaymentModalP
                   </div>
 
                   <button
-                    onClick={method === "cash" && cashNum < total ? () => handleQuickCash(total) : handleConfirm}
+                    onClick={method === "cash" && cashNum < finalTotal ? () => handleQuickCash(finalTotal) : handleConfirm}
                     disabled={isQRMethod && countdown === 0}
                     className="w-full py-3.5 bg-[#22C55E] text-white rounded-2xl hover:bg-green-600 transition-colors shadow-lg shadow-green-200 dark:shadow-green-900 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{ fontSize: "15px", fontWeight: 700 }}
                   >
                     {isQRMethod
-                      ? (lang === "km" ? `បញ្ជាក់ការបង់ប្រាក់ ${formatPrice(total)}` : `Confirm Payment ${formatPrice(total)}`)
-                      : `${t("confirmPayment")} ${formatPrice(total)}`
+                      ? (lang === "km" ? `បញ្ជាក់ការបង់ប្រាក់ ${formatPrice(finalTotal)}` : `Confirm Payment ${formatPrice(finalTotal)}`)
+                      : `${t("confirmPayment")} ${formatPrice(finalTotal)}`
                     }
                   </button>
                 </>

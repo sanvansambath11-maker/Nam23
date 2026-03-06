@@ -17,26 +17,36 @@ interface InvoiceModalProps {
     items: InvoiceItem[];
     paymentMethod: string;
     onClose: () => void;
-    onNewOrder: () => void;
+    onNewOrder?: () => void;
+
+    // Configs for historical view
+    orderNumber?: string;
+    orderDate?: string | Date;
+    overrideSubtotal?: number;
+    overrideVat?: number;
+    overrideDiscount?: number;
+    overrideTotal?: number;
 }
 
-export function InvoiceModal({ items, paymentMethod, onClose, onNewOrder }: InvoiceModalProps) {
+export function InvoiceModal({ items, paymentMethod, onClose, onNewOrder, orderNumber, orderDate, overrideSubtotal, overrideVat, overrideDiscount, overrideTotal }: InvoiceModalProps) {
     const { lang, fontClass } = useTranslation();
     const { formatDual, roundKHR, khrRate } = useCurrency();
     const { invoiceSettings, nextInvoiceNumber } = useInvoice();
     const invoiceRef = useRef<HTMLDivElement>(null);
     const invoiceNo = useRef(nextInvoiceNumber());
 
-    const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
-    const vat = subtotal * (invoiceSettings.vatRate / 100);
-    const discount = subtotal * 0.05;
-    const total = subtotal + vat - discount;
+    const subtotal = overrideSubtotal ?? items.reduce((s, i) => s + i.price * i.quantity, 0);
+    const vat = overrideVat ?? (subtotal * (invoiceSettings.vatRate / 100));
+    const discount = overrideDiscount ?? (subtotal * 0.05);
+    const total = overrideTotal ?? (subtotal + vat - discount);
     const totalKHR = roundKHR(total * khrRate);
     const dual = formatDual(total);
 
-    const now = new Date();
-    const dateStr = now.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
-    const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+    const invoiceDate = orderDate ? new Date(orderDate) : new Date();
+    const dateStr = invoiceDate.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
+    const timeStr = invoiceDate.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+
+    const displayInvoiceNo = orderNumber ?? invoiceNo.current;
 
     const methodDisplayName: Record<string, { en: string; km: string }> = {
         cash: { en: "Cash", km: "សាច់ប្រាក់" },
@@ -68,17 +78,39 @@ export function InvoiceModal({ items, paymentMethod, onClose, onNewOrder }: Invo
     };
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 print:p-0 print:block" onClick={onClose}>
+            <style type="text/css" media="print">
+                {`
+                    body * {
+                        visibility: hidden;
+                    }
+                    #printable-invoice, #printable-invoice * {
+                        visibility: visible;
+                    }
+                    #printable-invoice {
+                        position: absolute;
+                        left: 0;
+                        top: 0;
+                        width: 100%;
+                    }
+                    .no-print {
+                        display: none !important;
+                    }
+                    @page {
+                        margin: 0.5cm;
+                    }
+                `}
+            </style>
             <motion.div
                 initial={{ scale: 0.9, opacity: 0, y: 20 }}
                 animate={{ scale: 1, opacity: 1, y: 0 }}
                 exit={{ scale: 0.9, opacity: 0, y: 20 }}
                 transition={{ type: "spring", bounce: 0.2 }}
                 onClick={(e) => e.stopPropagation()}
-                className={`bg-white dark:bg-gray-900 rounded-3xl w-full max-w-md shadow-2xl max-h-[92vh] overflow-hidden flex flex-col ${fontClass}`}
+                className={`bg-white dark:bg-gray-900 rounded-3xl w-full max-w-md shadow-2xl max-h-[92vh] overflow-hidden flex flex-col ${fontClass} print:shadow-none print:max-h-none`}
             >
                 {/* Top action bar */}
-                <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-gray-50/50 dark:bg-gray-800/50">
+                <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between bg-gray-50/50 dark:bg-gray-800/50 no-print">
                     <div className="flex items-center gap-2">
                         <button onClick={handlePrint} className="p-2 rounded-xl hover:bg-white dark:hover:bg-gray-700 text-gray-500 hover:text-gray-700 transition-all" title={lang === "km" ? "បោះពុម្ព" : "Print"}>
                             <Printer size={16} />
@@ -99,8 +131,8 @@ export function InvoiceModal({ items, paymentMethod, onClose, onNewOrder }: Invo
                 </div>
 
                 {/* Invoice Content */}
-                <div className="flex-1 overflow-y-auto" ref={invoiceRef}>
-                    <div className="p-6" style={{ background: "white", color: "#1a1a1a" }}>
+                <div className="flex-1 overflow-y-auto print:overflow-visible" ref={invoiceRef}>
+                    <div id="printable-invoice" className="p-6" style={{ background: "white", color: "#1a1a1a" }}>
                         {/* Header with Logo */}
                         <div className="flex items-start justify-between mb-6">
                             <div className="flex items-center gap-3">
@@ -128,7 +160,7 @@ export function InvoiceModal({ items, paymentMethod, onClose, onNewOrder }: Invo
                                 {lang === "km" ? "វិក្កយបត្រ" : "INVOICE"}
                             </h2>
                             <p style={{ fontSize: "14px", fontWeight: 600, color: "#22C55E" }}>
-                                #{invoiceNo.current}
+                                #{displayInvoiceNo}
                             </p>
                         </div>
 
@@ -264,22 +296,23 @@ export function InvoiceModal({ items, paymentMethod, onClose, onNewOrder }: Invo
                 </div>
 
                 {/* Bottom action */}
-                <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 flex gap-3">
+                <div className="p-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/50 flex gap-3 no-print">
                     <button
-                        onClick={handlePrint}
+                        onClick={onClose}
                         className="flex-1 py-3 border border-gray-200 dark:border-gray-700 rounded-2xl text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
                         style={{ fontSize: "13px", fontWeight: 600 }}
                     >
-                        <Printer size={16} />
-                        {lang === "km" ? "បោះពុម្ព" : "Print"}
+                        {lang === "km" ? "បិទ" : "Close"}
                     </button>
-                    <button
-                        onClick={() => { onNewOrder(); onClose(); }}
-                        className="flex-1 py-3 bg-[#22C55E] text-white rounded-2xl hover:bg-green-600 transition-colors shadow-lg shadow-green-200 dark:shadow-green-900 flex items-center justify-center gap-2"
-                        style={{ fontSize: "13px", fontWeight: 700 }}
-                    >
-                        {lang === "km" ? "ការបញ្ជាទិញថ្មី" : "New Order"}
-                    </button>
+                    {onNewOrder && (
+                        <button
+                            onClick={() => { onNewOrder(); onClose(); }}
+                            className="flex-1 py-3 bg-[#22C55E] text-white rounded-2xl hover:bg-green-600 transition-colors shadow-lg shadow-green-200 dark:shadow-green-900 flex items-center justify-center gap-2"
+                            style={{ fontSize: "13px", fontWeight: 700 }}
+                        >
+                            {lang === "km" ? "ការបញ្ជាទិញថ្មី" : "New Order"}
+                        </button>
+                    )}
                 </div>
             </motion.div>
         </div>

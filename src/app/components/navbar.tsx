@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
-import { Search, Bell, ChevronDown, Moon, Sun, Globe, DollarSign, Clock, TrendingUp, LogOut, BarChart3, Shield } from "lucide-react";
+import { Search, Bell, ChevronDown, Moon, Sun, Globe, DollarSign, Clock, TrendingUp, LogOut, BarChart3, Shield, TimerReset } from "lucide-react";
 import { useTranslation } from "./translation-context";
 import { useTheme } from "./theme-context";
 import { useCurrency } from "./currency-context";
 import { getDashboardStats } from "../../lib/db-service";
 import { isSupabaseConfigured } from "../../lib/supabase";
 import { getLocalDashboardStats } from "../../lib/local-orders";
+import { toast } from "sonner";
 
 interface NavbarProps {
   activeTab: string;
@@ -32,6 +33,21 @@ export function Navbar({ activeTab, onTabChange, searchQuery, onSearchChange, st
 
   const [currentTime, setCurrentTime] = useState(new Date());
   const [todayRevenue, setTodayRevenue] = useState(0);
+  const [isClockedIn, setIsClockedIn] = useState(() => {
+    return localStorage.getItem("battoclub_clocked_in") === "true";
+  });
+
+  const handleToggleClock = () => {
+    const newState = !isClockedIn;
+    setIsClockedIn(newState);
+    localStorage.setItem("battoclub_clocked_in", String(newState));
+    // Usually this would hit the DB to actually punch in/out
+    if (newState) {
+      toast.success(lang === "km" ? "អ្នកបានចូលម៉ោង!" : "Clocked In!");
+    } else {
+      toast.success(lang === "km" ? "អ្នកបានចេញម៉ោង!" : "Clocked Out!");
+    }
+  };
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -74,20 +90,7 @@ export function Navbar({ activeTab, onTabChange, searchQuery, onSearchChange, st
         </span>
       </div>
 
-      {/* Search */}
-      <div className="flex-1 max-w-xs">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-          <input
-            type="text"
-            placeholder={t("search")}
-            value={searchQuery ?? ""}
-            onChange={(e) => onSearchChange?.(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-gray-50 dark:bg-gray-800 rounded-xl border-none outline-none text-gray-600 dark:text-gray-300"
-            style={{ fontSize: "13px" }}
-          />
-        </div>
-      </div>
+
 
       {/* Tabs */}
       <div className="flex items-center gap-0.5 overflow-x-auto">
@@ -180,6 +183,20 @@ export function Navbar({ activeTab, onTabChange, searchQuery, onSearchChange, st
 
         {/* User */}
         <div className="flex items-center gap-2 cursor-pointer pl-2 border-l border-gray-100 dark:border-gray-700 ml-1">
+          {/* Quick Clock in/out */}
+          <button
+            onClick={handleToggleClock}
+            className={`mr-2 flex items-center gap-1 px-2 py-1.5 rounded-lg transition-colors border ${isClockedIn
+              ? "bg-green-50 text-green-600 border-green-200 dark:bg-green-900/20 dark:border-green-800"
+              : "bg-red-50 text-red-600 border-red-200 dark:bg-red-900/20 dark:border-red-800"}`}
+            title={lang === "km" ? (isClockedIn ? "ចេញម៉ោង" : "ចូលម៉ោង") : (isClockedIn ? "Clock Out" : "Clock In")}
+          >
+            <TimerReset size={14} />
+            <span style={{ fontSize: "11px", fontWeight: 700 }} className="hidden lg:block">
+              {lang === "km" ? (isClockedIn ? "កំពុងធ្វើការ" : "ចូលម៉ោង") : (isClockedIn ? "Clocked In" : "Clock In")}
+            </span>
+          </button>
+
           <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: staffColor ? `linear-gradient(135deg, ${staffColor}, ${staffColor}CC)` : "linear-gradient(135deg, #F97316, #EC4899)" }}>
             <span className="text-white" style={{ fontSize: "12px", fontWeight: 600 }}>{staffInitials || "JD"}</span>
           </div>

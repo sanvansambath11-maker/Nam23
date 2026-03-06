@@ -63,6 +63,16 @@ export function getLocalOrders(limit = 200): LocalOrder[] {
     return cachedOrders.slice(0, limit);
 }
 
+export function updateLocalOrderStatus(id: number, status: string) {
+    cachedOrders = loadOrders();
+    const orderIndex = cachedOrders.findIndex((o) => o.id === id);
+    if (orderIndex > -1) {
+        cachedOrders[orderIndex].status = status;
+        saveOrders(cachedOrders);
+        window.dispatchEvent(new CustomEvent("order-updated", { detail: cachedOrders[orderIndex] }));
+    }
+}
+
 export function getLocalOrdersToday(): LocalOrder[] {
     const today = new Date();
     today.setHours(0, 0, 0, 0);

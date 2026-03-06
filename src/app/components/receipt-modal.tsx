@@ -99,7 +99,7 @@ export function ReceiptModal({ items, onClose }: ReceiptModalProps) {
               </div>
             </div>
             <p className="text-gray-400 text-center mt-2" style={{ fontSize: "9px" }}>
-              {t("exchangeRate")}: $1 = 4,100{"\u17DB"}
+              {t("exchangeRate")}: $1 = 4,100៛
             </p>
           </div>
 

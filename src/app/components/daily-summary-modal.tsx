@@ -5,6 +5,7 @@ import { useCurrency } from "./currency-context";
 import { motion } from "motion/react";
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from "recharts";
 import { getLocalOrdersToday } from "../../lib/local-orders";
+import { notifyDailySummary } from "../../lib/telegram-notify";
 
 interface DailySummaryModalProps {
   onClose: () => void;
@@ -74,6 +75,32 @@ export function DailySummaryModal({ onClose }: DailySummaryModalProps) {
       paymentBreakdown: pBreak,
     };
   }, []);
+
+  const handleSendReport = async () => {
+    try {
+      let restaurantName = "POS Batto";
+      try {
+        const u = localStorage.getItem("battoclub_user");
+        if (u) {
+          const j = JSON.parse(u);
+          restaurantName = j.restaurantName ?? j.name ?? restaurantName;
+        }
+      } catch { /* ignore */ }
+
+      await notifyDailySummary({
+        totalRevenue,
+        totalOrders,
+        totalCustomers,
+        restaurantName,
+        paymentBreakdown: paymentBreakdown.map(p => ({ method: p.label, amount: p.amount }))
+      });
+      // Try to clear the orders out
+      localStorage.removeItem("battoclub_orders");
+      onClose();
+    } catch {
+      // ignore
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -203,13 +230,22 @@ export function DailySummaryModal({ onClose }: DailySummaryModalProps) {
             <div className="flex items-center gap-2 text-gray-400">
               <p style={{ fontSize: "10px" }}>POS Batto &bull; {dateStr} &bull; TIN: K001-2024-00458</p>
             </div>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 bg-[#22C55E] text-white rounded-xl hover:bg-green-600 transition-colors"
-              style={{ fontSize: "13px", fontWeight: 600 }}
-            >
-              {t("close")}
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={onClose}
+                className="px-4 py-2 bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors"
+                style={{ fontSize: "13px", fontWeight: 600 }}
+              >
+                {t("close")}
+              </button>
+              <button
+                onClick={handleSendReport}
+                className="px-4 py-2 bg-[#22C55E] text-white rounded-xl hover:bg-green-600 transition-colors"
+                style={{ fontSize: "13px", fontWeight: 600 }}
+              >
+                {lang === "km" ? "ផ្ញើរបាយការណ៍បិទបញ្ជី" : "End of Day (Z-Report)"}
+              </button>
+            </div>
           </div>
         </div>
       </motion.div>

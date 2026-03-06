@@ -47,13 +47,7 @@ const methodConfig: Record<PayMethod, { label: string; color: string; icon: Reac
     acleda: { label: "ACLEDA", color: "#00529B", icon: <Smartphone size={16} />, abbr: "AC" },
 };
 
-const mockHistory: PaymentRecord[] = [
-    { id: 1, orderNumber: "ORD-0041", total: 25.50, splits: [{ id: 1, method: "cash", amount: 15 }, { id: 2, method: "aba", amount: 10.50 }], date: "2026-03-04 14:30", status: "completed" },
-    { id: 2, orderNumber: "ORD-0040", total: 18.00, splits: [{ id: 1, method: "card", amount: 18 }], date: "2026-03-04 13:15", status: "completed" },
-    { id: 3, orderNumber: "ORD-0039", total: 42.00, splits: [{ id: 1, method: "cash", amount: 20 }, { id: 2, method: "khqr", amount: 12 }, { id: 3, method: "wing", amount: 10 }], date: "2026-03-04 12:00", status: "completed" },
-    { id: 4, orderNumber: "ORD-0038", total: 15.75, splits: [{ id: 1, method: "bakong", amount: 15.75 }], date: "2026-03-04 11:30", status: "completed" },
-    { id: 5, orderNumber: "ORD-0037", total: 33.00, splits: [{ id: 1, method: "cash", amount: 20 }, { id: 2, method: "card", amount: 13 }], date: "2026-03-04 10:45", status: "refunded" },
-];
+const mockHistory: PaymentRecord[] = [];
 
 let nextSplitId = 100;
 
@@ -91,12 +85,16 @@ export function MultiPayment() {
     };
 
     // Payment method breakdown for overview
-    const methodBreakdown = mockHistory.reduce((acc, record) => {
-        record.splits.forEach((split) => {
-            acc[split.method] = (acc[split.method] || 0) + split.amount;
-        });
+    const methodBreakdown = (Object.keys(methodConfig) as PayMethod[]).reduce((acc, method) => {
+        acc[method] = 0;
         return acc;
     }, {} as Record<string, number>);
+
+    mockHistory.forEach((record) => {
+        record.splits.forEach((split) => {
+            methodBreakdown[split.method] = (methodBreakdown[split.method] || 0) + split.amount;
+        });
+    });
 
     const totalRevenue = Object.values(methodBreakdown).reduce((s, v) => s + v, 0);
 
@@ -149,7 +147,7 @@ export function MultiPayment() {
                                         </div>
                                         <p className="text-gray-900 dark:text-white" style={{ fontSize: "18px", fontWeight: 700 }}>{formatPrice(amount)}</p>
                                         <p className="text-gray-400" style={{ fontSize: "10px" }}>
-                                            {((amount / totalRevenue) * 100).toFixed(1)}% {lang === "km" ? "នៃសរុប" : "of total"}
+                                            {totalRevenue > 0 ? ((amount / totalRevenue) * 100).toFixed(1) : "0.0"}% {lang === "km" ? "នៃសរុប" : "of total"}
                                         </p>
                                     </div>
                                 );
@@ -160,9 +158,9 @@ export function MultiPayment() {
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
                         {[
                             { label: lang === "km" ? "ប្រាក់ចំណូលសរុប" : "Total Revenue", value: formatPrice(totalRevenue), icon: <DollarSign size={18} />, color: "#22C55E" },
-                            { label: lang === "km" ? "ការបំបែកប្រចាំថ្ងៃ" : "Split Payments Today", value: "3", icon: <PieChart size={18} />, color: "#3B82F6" },
-                            { label: lang === "km" ? "មធ្យមក្នុង ១ វិក្កយបត្រ" : "Avg Per Bill", value: formatPrice(totalRevenue / mockHistory.length), icon: <TrendingUp size={18} />, color: "#A855F7" },
-                            { label: lang === "km" ? "វិធីបង់ប្រាក់ច្រើនបំផុត" : "Most Used Method", value: "Cash", icon: <Banknote size={18} />, color: "#F59E0B" },
+                            { label: lang === "km" ? "ការបំបែកប្រចាំថ្ងៃ" : "Split Payments Today", value: mockHistory.length.toString(), icon: <PieChart size={18} />, color: "#3B82F6" },
+                            { label: lang === "km" ? "មធ្យមក្នុង ១ វិក្កយបត្រ" : "Avg Per Bill", value: formatPrice(mockHistory.length > 0 ? totalRevenue / mockHistory.length : 0), icon: <TrendingUp size={18} />, color: "#A855F7" },
+                            { label: lang === "km" ? "វិធីបង់ប្រាក់ច្រើនបំផុត" : "Most Used Method", value: mockHistory.length > 0 ? "Cash" : "-", icon: <Banknote size={18} />, color: "#F59E0B" },
                         ].map((stat, i) => (
                             <div key={i} className="bg-white dark:bg-gray-900 rounded-xl p-4 border border-gray-100 dark:border-gray-800">
                                 <div className="flex items-center gap-2 mb-2">
@@ -184,36 +182,42 @@ export function MultiPayment() {
                             </h3>
                         </div>
                         <div className="divide-y divide-gray-50 dark:divide-gray-800/50">
-                            {mockHistory.map((record) => (
-                                <div key={record.id} className="px-5 py-3 flex items-center gap-4 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
-                                    <div className="w-10 h-10 rounded-xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
-                                        <Receipt size={18} className="text-gray-400" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <div className="flex items-center gap-2">
-                                            <p className="text-gray-900 dark:text-white" style={{ fontSize: "13px", fontWeight: 600 }}>{record.orderNumber}</p>
-                                            <span className={`px-1.5 py-0.5 rounded text-white ${record.status === "completed" ? "bg-green-500" : record.status === "refunded" ? "bg-red-500" : "bg-amber-500"}`} style={{ fontSize: "9px", fontWeight: 600 }}>
-                                                {record.status}
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center gap-1 mt-0.5">
-                                            {record.splits.map((split, i) => (
-                                                <span key={i} className="flex items-center gap-0.5">
-                                                    <span className="w-4 h-4 rounded flex items-center justify-center text-white" style={{ backgroundColor: methodConfig[split.method]?.color || "#999", fontSize: "7px", fontWeight: 700 }}>
-                                                        {methodConfig[split.method]?.abbr.charAt(0) || "?"}
-                                                    </span>
-                                                    <span className="text-gray-500" style={{ fontSize: "10px" }}>{formatPrice(split.amount)}</span>
-                                                    {i < record.splits.length - 1 && <span className="text-gray-300 mx-0.5">+</span>}
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="text-gray-900 dark:text-white" style={{ fontSize: "14px", fontWeight: 700 }}>{formatPrice(record.total)}</p>
-                                        <p className="text-gray-400" style={{ fontSize: "10px" }}>{record.date}</p>
-                                    </div>
+                            {mockHistory.length === 0 ? (
+                                <div className="px-5 py-8 text-center text-gray-400" style={{ fontSize: "13px" }}>
+                                    {lang === "km" ? "មិនទាន់មានទិន្នន័យ" : "No history data yet"}
                                 </div>
-                            ))}
+                            ) : (
+                                mockHistory.map((record) => (
+                                    <div key={record.id} className="px-5 py-3 flex items-center gap-4 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
+                                        <div className="w-10 h-10 rounded-xl bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
+                                            <Receipt size={18} className="text-gray-400" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-2">
+                                                <p className="text-gray-900 dark:text-white" style={{ fontSize: "13px", fontWeight: 600 }}>{record.orderNumber}</p>
+                                                <span className={`px-1.5 py-0.5 rounded text-white ${record.status === "completed" ? "bg-green-500" : record.status === "refunded" ? "bg-red-500" : "bg-amber-500"}`} style={{ fontSize: "9px", fontWeight: 600 }}>
+                                                    {record.status}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-1 mt-0.5">
+                                                {record.splits.map((split, i) => (
+                                                    <span key={i} className="flex items-center gap-0.5">
+                                                        <span className="w-4 h-4 rounded flex items-center justify-center text-white" style={{ backgroundColor: methodConfig[split.method]?.color || "#999", fontSize: "7px", fontWeight: 700 }}>
+                                                            {methodConfig[split.method]?.abbr.charAt(0) || "?"}
+                                                        </span>
+                                                        <span className="text-gray-500" style={{ fontSize: "10px" }}>{formatPrice(split.amount)}</span>
+                                                        {i < record.splits.length - 1 && <span className="text-gray-300 mx-0.5">+</span>}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-gray-900 dark:text-white" style={{ fontSize: "14px", fontWeight: 700 }}>{formatPrice(record.total)}</p>
+                                            <p className="text-gray-400" style={{ fontSize: "10px" }}>{record.date}</p>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
                         </div>
                     </div>
                 </>
@@ -263,8 +267,8 @@ export function MultiPayment() {
                                                     key={method}
                                                     onClick={() => handleUpdateSplit(split.id, "method", method)}
                                                     className={`px-2.5 py-1.5 rounded-lg border-2 transition-all flex items-center gap-1.5 ${split.method === method
-                                                            ? "border-[#22C55E] bg-green-50 dark:bg-green-900/20"
-                                                            : "border-transparent bg-white dark:bg-gray-700"
+                                                        ? "border-[#22C55E] bg-green-50 dark:bg-green-900/20"
+                                                        : "border-transparent bg-white dark:bg-gray-700"
                                                         }`}
                                                     style={{ fontSize: "11px", fontWeight: 500 }}
                                                 >
@@ -324,10 +328,10 @@ export function MultiPayment() {
 
                             {/* Status indicator */}
                             <div className={`flex items-center gap-2 px-4 py-3 rounded-xl ${remaining === 0
-                                    ? "bg-green-50 dark:bg-green-900/20 text-green-600"
-                                    : remaining > 0
-                                        ? "bg-amber-50 dark:bg-amber-900/20 text-amber-600"
-                                        : "bg-red-50 dark:bg-red-900/20 text-red-600"
+                                ? "bg-green-50 dark:bg-green-900/20 text-green-600"
+                                : remaining > 0
+                                    ? "bg-amber-50 dark:bg-amber-900/20 text-amber-600"
+                                    : "bg-red-50 dark:bg-red-900/20 text-red-600"
                                 }`}>
                                 {remaining === 0 ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
                                 <span style={{ fontSize: "12px", fontWeight: 500 }}>
